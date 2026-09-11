@@ -510,7 +510,6 @@ function CostSection() {
           <article className="cost-card cost-card-replo">
             <div className="cost-card-head">
               <span className="cost-card-kicker">Replo</span>
-              <span className="cost-card-badge">{cost.reploBadge}</span>
               <h3>{cost.reploTitle}</h3>
             </div>
             <div className="cost-price cost-price-replo">월 {cost.reploTotal}</div>
@@ -609,7 +608,6 @@ function FeatureMatrix() {
               {columns.map((column, index) => (
                 <th className={index === bestIndex ? "best" : ""} key={column}>
                   {column}
-                  {index === bestIndex ? <span className="ftm-limited">7월 한정 · ~07.31</span> : null}
                 </th>
               ))}
             </tr>
@@ -651,21 +649,15 @@ function LandingPricing() {
           {pricing.description ? <p className="t-lead" style={{ marginTop: 16 }}>{pricing.description}</p> : null}
         </div>
         <div className="pricing4">
-          {pricing.plans.map(({ en, ko, price, originalPrice, volume, best, badge, deadline, description, features }) => (
+          {pricing.plans.map(({ en, ko, price, volume, best, description, features }) => (
             <div className={`tier${best ? " best" : ""}`} key={en}>
               <div className="tier-head">
-                {badge ? (
-                  <div className="tier-benefit" aria-label={`${badge} ${deadline ?? ""}`.trim()}>
-                    7월 한정 도입 혜택 {deadline ? <span>· {deadline}</span> : null}
-                  </div>
-                ) : null}
                 <div>
                   <div className="tier-name-en">{en}</div>
                   <div className="tier-name">{ko}</div>
                 </div>
               </div>
               <div className="tier-price-wrap">
-                {originalPrice ? <div className="tier-regular"><del>{originalPrice}</del></div> : null}
                 <div className="tier-price">
                   {price}
                   {price.startsWith("₩") ? <small>{pricing.monthlyUnit}</small> : null}
@@ -677,7 +669,7 @@ function LandingPricing() {
                 {features.map((feature) => <li key={feature}><Icon name="check" size={15} stroke={2.3} />{feature}</li>)}
               </ul>
               <ButtonLink size="sm" variant={best ? "primary" : "ghost"} className="btn-block tier-cta">
-                {en === "Enterprise" ? pricing.enterpriseCta : best ? pricing.launchCta : pricing.standardCta}
+                {en === "Enterprise" ? pricing.enterpriseCta : pricing.standardCta}
               </ButtonLink>
             </div>
           ))}
