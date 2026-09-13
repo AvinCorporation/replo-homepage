@@ -30,7 +30,3 @@ export const selectablePlans = [
 ] as const;
 
 export type SelectablePlanId = (typeof selectablePlans)[number]["id"];
-
-export function findSelectablePlan(value: unknown) {
-  return selectablePlans.find((plan) => plan.id === value);
-}

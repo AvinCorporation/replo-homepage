@@ -63,7 +63,16 @@ export class TossClient {
           ...(body ? { body: JSON.stringify(body) } : {}),
         },
       );
-      const data = await response.json();
+      const raw = await response.text();
+      let data: Record<string, unknown> = {};
+      if (raw) {
+        try {
+          data = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          if (!response.ok)
+            throw new TossError("UNMAPPED_ERROR", response.status);
+        }
+      }
       if (!response.ok)
         throw new TossError(
           typeof data.code === "string" && /^[A-Z0-9_]{1,100}$/.test(data.code)
@@ -84,6 +93,12 @@ export class TossClient {
       "POST",
       { authKey, customerKey },
       sessionId,
+    );
+  }
+  async revokeBillingKey(billingKey: string) {
+    await this.request(
+      `/v1/billing/${encodeURIComponent(billingKey)}`,
+      "DELETE",
     );
   }
   charge(

@@ -5,6 +5,7 @@ import { billingConfig } from "./config";
 import { encryptCredential, stateDigest } from "./crypto";
 import { invoiceAmount, parsePolicy } from "./domain";
 import { TossClient } from "./client";
+import { sameJsonValue } from "./json";
 export async function registrationConditions(workspaceId: string) {
   const { data: subscription, error } = await billingAdmin()
     .from("subscriptions")
@@ -41,7 +42,7 @@ export async function beginRegistration(
 ) {
   const conditions = await registrationConditions(workspaceId);
   // Client must affirm the exact server-generated terms, including fee/date.
-  if (JSON.stringify(consent) !== JSON.stringify(conditions))
+  if (!sameJsonValue(consent, conditions))
     throw new Error("BILLING_CONSENT_CHANGED");
   const state = randomBytes(32).toString("base64url");
   const id = await rpc<string>("billing_begin_registration", {
@@ -104,13 +105,17 @@ export async function completeRegistration(input: {
     .select("id")
     .maybeSingle();
   if (claimError || !claimed) throw new Error("REGISTRATION_ALREADY_USED");
+  let issuedBillingKey: string | null = null;
+  let toss: TossClient | null = null;
   try {
     const config = billingConfig();
-    const billing = await new TossClient(config.secretKey).issue(
+    toss = new TossClient(config.secretKey);
+    const billing = await toss.issue(
       input.authKey,
       profile.customer_key,
       session.id,
     );
+    if (billing.billingKey) issuedBillingKey = billing.billingKey;
     if (
       billing.customerKey !== profile.customer_key ||
       !billing.billingKey ||
@@ -140,12 +145,27 @@ export async function completeRegistration(input: {
       },
     });
   } catch {
-    // Never revoke the prior card, retry an authKey, or log a raw credential error.
+    // If Toss issued a new key but the DB transaction failed, remove only that
+    // unpersisted key. Never revoke the prior card or retry an authKey.
+    if (issuedBillingKey && toss) {
+      try {
+        await toss.revokeBillingKey(issuedBillingKey);
+      } catch {
+        console.warn("billing.orphan_billing_key_cleanup_failed", {
+          registration_session_id: session.id,
+          workspace_id: session.workspace_id,
+        });
+      }
+    }
     await admin
       .from("billing_registration_sessions")
       .update({ status: "failed" })
       .eq("id", session.id)
       .eq("status", "processing");
-    throw new Error("BILLING_REGISTRATION_FAILED");
+    throw new Error(
+      issuedBillingKey
+        ? "BILLING_DATABASE_ERROR"
+        : "BILLING_REGISTRATION_FAILED",
+    );
   }
 }

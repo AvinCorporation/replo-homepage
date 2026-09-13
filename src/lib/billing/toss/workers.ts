@@ -11,19 +11,12 @@ import {
   seoulToday,
 } from "./domain";
 import { TossClient, TossError, type TossPayment } from "./client";
-const BATCH_SIZE = 2; // Each provider request allows 65s; bounded within the route duration.
-type Attempt = {
-  id: string;
-  workspace_id: string;
-  invoice_id: string;
-  payment_method_id: string;
-  amount: number;
-  order_id: string;
-  idempotency_key: string;
-  order_name: string;
-  lease_token: string;
-  status: string;
-};
+import {
+  processChargesWith,
+  reconcilePaymentsWith,
+  type WorkerAttempt as Attempt,
+} from "./workerOrchestrator";
+
 export async function generateInvoices() {
   const admin = billingAdmin();
   const today = seoulToday();
@@ -115,6 +108,7 @@ export async function generateInvoices() {
   }
   return generated;
 }
+
 async function saveSuccess(attempt: Attempt, payment: TossPayment) {
   if (
     payment.orderId !== attempt.order_id ||
@@ -148,6 +142,7 @@ async function saveSuccess(attempt: Attempt, payment: TossPayment) {
     });
   }
 }
+
 async function saveFailure(attempt: Attempt, error: TossError) {
   const { data: invoice, error: invoiceError } = await billingAdmin()
     .from("billing_invoices")
@@ -172,120 +167,129 @@ async function saveFailure(attempt: Attempt, error: TossError) {
     p_retry_at: next,
   });
 }
+
 export async function processCharges() {
-  if (!billingConfig().chargesEnabled) return 0;
   const admin = billingAdmin();
-  const invoices = await rpc<Array<{ id: string }>>("billing_due_invoice_ids", {
-    p_limit: BATCH_SIZE,
-  });
-  let charged = 0;
-  for (const invoice of invoices ?? []) {
-    if (!billingConfig().chargesEnabled) break;
-    const attempt = await rpc<Attempt | null>("billing_claim_invoice", {
-      p_invoice: invoice.id,
-    });
-    if (!attempt) continue;
-    const { data: credential, error: credentialError } = await admin
-      .from("billing_credentials")
-      .select("encrypted_billing_key,encryption_key_version")
-      .eq("workspace_id", attempt.workspace_id)
-      .eq("payment_method_id", attempt.payment_method_id)
-      .eq("status", "active")
-      .single();
-    const { data: profile, error: profileError } = await admin
-      .from("billing_profiles")
-      .select("customer_key")
-      .eq("workspace_id", attempt.workspace_id)
-      .single();
-    if (credentialError || profileError || !credential || !profile)
-      throw new Error("BILLING_CREDENTIAL_UNAVAILABLE");
-    const config = billingConfig();
-    const key = decryptCredential(
-      credential.encrypted_billing_key,
-      credential.encryption_key_version,
-      `${attempt.workspace_id}:${attempt.payment_method_id}`,
-      config.keyRing,
-    );
-    if (!billingConfig().chargesEnabled) break;
-    if (
-      !(await rpc<boolean>("billing_authorize_attempt", {
+  return processChargesWith({
+    chargesEnabled: () => billingConfig().chargesEnabled,
+    listDueInvoices: (limit) =>
+      rpc<Array<{ id: string }>>("billing_due_invoice_ids", {
+        p_limit: limit,
+      }),
+    claimInvoice: (invoiceId) =>
+      rpc<Attempt | null>("billing_claim_invoice", {
+        p_invoice: invoiceId,
+      }),
+    loadChargeMaterial: async (attempt) => {
+      const { data: credential, error: credentialError } = await admin
+        .from("billing_credentials")
+        .select("encrypted_billing_key,encryption_key_version")
+        .eq("workspace_id", attempt.workspace_id)
+        .eq("payment_method_id", attempt.payment_method_id)
+        .eq("status", "active")
+        .single();
+      const { data: profile, error: profileError } = await admin
+        .from("billing_profiles")
+        .select("customer_key")
+        .eq("workspace_id", attempt.workspace_id)
+        .single();
+      if (credentialError || profileError || !credential || !profile)
+        throw new Error("BILLING_CREDENTIAL_UNAVAILABLE");
+      const config = billingConfig();
+      return {
+        billingKey: decryptCredential(
+          credential.encrypted_billing_key,
+          credential.encryption_key_version,
+          `${attempt.workspace_id}:${attempt.payment_method_id}`,
+          config.keyRing,
+        ),
+        customerKey: profile.customer_key,
+        secretKey: config.secretKey,
+      };
+    },
+    authorizeAttempt: (attempt) =>
+      rpc<boolean>("billing_authorize_attempt", {
         p_attempt: attempt.id,
         p_lease: attempt.lease_token,
-      }))
-    )
-      continue;
-    let payment: TossPayment;
-    try {
-      payment = await new TossClient(config.secretKey).charge(
-        key,
+      }),
+    charge: (attempt, material) =>
+      new TossClient(material.secretKey).charge(
+        material.billingKey,
         {
-          customerKey: profile.customer_key,
+          customerKey: material.customerKey,
           amount: attempt.amount,
           orderId: attempt.order_id,
           orderName: attempt.order_name,
         },
         attempt.idempotency_key,
-      );
-    } catch (error) {
-      await saveFailure(
-        attempt,
-        error instanceof TossError
-          ? error
-          : new TossError("RESPONSE_UNKNOWN", 0),
-      );
-      continue;
-    }
-    // Deliberately outside the provider-error catch: a DB write error after approval
-    // leaves the original processing attempt for reconciliation, never retry creation.
-    await saveSuccess(attempt, payment);
-    charged++;
-  }
-  return charged;
+      ),
+    recordChargeFailure: saveFailure,
+    recordChargeSuccess: saveSuccess,
+    deferBeforeDispatch: (attempt, code) =>
+      rpc("billing_defer_attempt", {
+        p_attempt: attempt.id,
+        p_code: code,
+      }),
+    isTossError: (error): error is TossError => error instanceof TossError,
+    unknownTossError: () => new TossError("RESPONSE_UNKNOWN", 0),
+    warn: (event, identifiers) => console.warn(event, identifiers),
+  });
 }
+
 export async function reconcilePayments() {
   const admin = billingAdmin();
-  const now = new Date().toISOString();
-  const { data: attempts, error } = await admin
-    .from("payment_attempts")
-    .select("id")
-    .in("status", [
-      "created",
-      "processing",
-      "unknown",
-      "reconciling",
-      "succeeded",
-    ])
-    .or(`lease_until.is.null,lease_until.lt.${now}`)
-    .order("last_checked_at", { ascending: true, nullsFirst: true })
-    .limit(BATCH_SIZE);
-  if (error) throw new Error("BILLING_DATABASE_ERROR");
-  let recovered = 0;
-  for (const row of attempts ?? []) {
-    const a = await rpc<Attempt | null>("billing_claim_reconciliation", {
-      p_attempt: row.id,
-    });
-    if (!a) continue;
-    try {
-      const payment = await new TossClient(billingConfig().secretKey).lookup(
-        a.order_id,
-      );
-      await saveSuccess(a, payment);
-      recovered++;
-    } catch {
-      console.warn("billing.reconciliation_pending", {
-        payment_attempt_id: a.id,
-        invoice_id: a.invoice_id,
-      });
-      // Includes NOT_FOUND_PAYMENT: absence alone does not prove a timed-out charge failed.
-      // Preserve identity and require subsequent lookup/operator resolution; never send a new order.
-    } finally {
-      const { error: releaseError } = await admin
+  return reconcilePaymentsWith({
+    now: () => new Date(),
+    listUnresolvedCandidates: async (lastCheckedBefore, limit) => {
+      const now = new Date().toISOString();
+      const { data, error } = await admin
+        .from("payment_attempts")
+        .select("id")
+        .in("status", ["created", "processing", "unknown", "reconciling"])
+        .or(`lease_until.is.null,lease_until.lt.${now}`)
+        .or(
+          `last_checked_at.is.null,last_checked_at.lt.${lastCheckedBefore}`,
+        )
+        .order("last_checked_at", { ascending: true, nullsFirst: true })
+        .limit(limit);
+      if (error) throw new Error("BILLING_DATABASE_ERROR");
+      return data ?? [];
+    },
+    listSucceededCandidates: async (
+      lastCheckedBefore,
+      approvedAfter,
+      limit,
+    ) => {
+      const now = new Date().toISOString();
+      const { data, error } = await admin
+        .from("payment_attempts")
+        .select("id")
+        .eq("status", "succeeded")
+        .gte("approved_at", approvedAfter)
+        .or(`lease_until.is.null,lease_until.lt.${now}`)
+        .or(
+          `last_checked_at.is.null,last_checked_at.lt.${lastCheckedBefore}`,
+        )
+        .order("last_checked_at", { ascending: true, nullsFirst: true })
+        .limit(limit);
+      if (error) throw new Error("BILLING_DATABASE_ERROR");
+      return data ?? [];
+    },
+    claimReconciliation: (attemptId) =>
+      rpc<Attempt | null>("billing_claim_reconciliation", {
+        p_attempt: attemptId,
+      }),
+    lookup: (attempt) =>
+      new TossClient(billingConfig().secretKey).lookup(attempt.order_id),
+    recordReconciliationSuccess: saveSuccess,
+    releaseLease: async (attempt) => {
+      const { error } = await admin
         .from("payment_attempts")
         .update({ lease_until: null })
-        .eq("id", a.id)
-        .eq("lease_token", a.lease_token);
-      if (releaseError) throw new Error("BILLING_DATABASE_ERROR");
-    }
-  }
-  return recovered;
+        .eq("id", attempt.id)
+        .eq("lease_token", attempt.lease_token);
+      if (error) throw new Error("BILLING_DATABASE_ERROR");
+    },
+    warn: (event, identifiers) => console.warn(event, identifiers),
+  });
 }

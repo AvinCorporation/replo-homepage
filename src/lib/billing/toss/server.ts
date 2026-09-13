@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { billingConfig } from "./config";
+import { billingErrorDetails } from "./errors";
 export async function billingAccess(workspaceId?: string, manage = false) {
   const client = await createClient();
   const {
@@ -40,7 +41,15 @@ export async function rpc<T>(
   args: Record<string, unknown>,
 ): Promise<T> {
   const { data, error } = await billingAdmin().rpc(name, args);
-  if (error) throw new Error("BILLING_DATABASE_ERROR");
+  if (error) {
+    const safeCode = [
+      "BILLING_FORBIDDEN",
+      "BILLING_REGISTRATION_IN_PROGRESS",
+      "INVALID_REGISTRATION",
+      "REGISTRATION_ALREADY_USED",
+    ].find((code) => error.message.includes(code));
+    throw new Error(safeCode ?? "BILLING_DATABASE_ERROR");
+  }
   return data as T;
 }
 export function checkOrigin(request: Request) {
@@ -49,21 +58,12 @@ export function checkOrigin(request: Request) {
 }
 export function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "";
-  const status =
-    code === "BILLING_UNAUTHENTICATED"
-      ? 401
-      : code === "BILLING_FORBIDDEN"
-        ? 403
-        : 503;
+  const response = billingErrorDetails(code);
   return Response.json(
+    { code: response.code, error: response.error },
     {
-      error:
-        status === 401
-          ? "로그인이 필요합니다."
-          : status === 403
-            ? "결제 정보를 변경할 권한이 없습니다."
-            : "결제 설정 또는 처리 상태를 확인해 주세요. 담당자 확인이 필요합니다.",
+      status: response.status,
+      headers: { "Cache-Control": "no-store" },
     },
-    { status, headers: { "Cache-Control": "no-store" } },
   );
 }

@@ -142,7 +142,14 @@ export function BillingSettings() {
         body: JSON.stringify({ agreed, conditions }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      if (!r.ok) {
+        setError(
+          typeof d.error === "string"
+            ? d.error
+            : "카드 등록 요청을 처리하지 못했습니다.",
+        );
+        return;
+      }
       await window
         .TossPayments(d.clientKey)
         .payment({ customerKey: d.customerKey })
@@ -171,11 +178,13 @@ export function BillingSettings() {
     } catch {}
   return (
     <div className="billing-settings">
-      <Script
-        src="https://js.tosspayments.com/v2/standard"
-        onReady={() => setSdkReady(true)}
-        onError={() => setError("카드 등록 창을 불러오지 못했습니다.")}
-      />
+      {data?.canManage && (
+        <Script
+          src="https://js.tosspayments.com/v2/standard"
+          onReady={() => setSdkReady(true)}
+          onError={() => setError("카드 등록 창을 불러오지 못했습니다.")}
+        />
+      )}
       {error && (
         <p role="alert" className="mypage-message error">
           {error}

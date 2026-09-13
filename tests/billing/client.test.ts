@@ -79,3 +79,18 @@ test("lookup uses original order; raw provider error message is discarded", asyn
     "https://api.tosspayments.com/v1/payments/orders/replo_original-order",
   );
 });
+test("orphan cleanup deletes the issued billing key and accepts an empty response", async () => {
+  let requested = "";
+  let method = "";
+  const client = new TossClient("test_sk_fixture", async (url, init) => {
+    requested = String(url);
+    method = init?.method ?? "";
+    return new Response(null, { status: 200 });
+  });
+  await client.revokeBillingKey("synthetic/billing-key");
+  assert.equal(
+    requested,
+    "https://api.tosspayments.com/v1/billing/synthetic%2Fbilling-key",
+  );
+  assert.equal(method, "DELETE");
+});

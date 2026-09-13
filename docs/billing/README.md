@@ -11,7 +11,7 @@
 이번 코드 검증과 실제 PG 연동 검증을 구분합니다. Toss Test 카드 등록·변경·승인·실패·취소, 실제 Supabase RLS/API, 별도 연결 간 동시 Worker 테스트는 후속 작업입니다. 이 검증 전 MVP 출시 완료로 판단하지 않습니다.
 
 1. Toss 자동결제 사용 가능한 계약/MID와 **자동결제용 Test Client/Secret Key**를 확인합니다.
-2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`을 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
+2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
 3. 아래 환경변수를 Preview에 등록합니다. Secret을 Git/이슈/대화에 붙여넣지 않습니다.
 4. 개발 Auth User, Workspace, owner/admin/editor/viewer, 두 번째 Workspace를 준비합니다.
 5. 사업 정책과 기존 고객 전환 조건을 확인하고, 테스트 구독에 명시적으로 설정합니다.
@@ -28,7 +28,7 @@
 - AES-256-GCM, Workspace+카드 ID AAD, 키 버전 및 이전 키 복호화 지원. credential은 서비스 전용.
 - 1회·만료 state 해시, 등록 사용자·Workspace 고정, callback 권한 재검증, 카드 교체 단일 DB 트랜잭션.
 - 마이페이지 실제 구독·카드·예정금액·청구·실패·취소 조회 및 Toss SDK 카드 인증.
-- 생성/승인/복구 Worker 분리. Invoice generation cursor와 결제 성공 시 다음 결제일 분리.
+- 생성/승인/복구 Worker 분리. Invoice generation cursor와 결제 성공 시 다음 결제일 분리. Invoice별 오류를 격리해 한 건의 credential/DB 오류가 같은 배치의 다음 청구를 막지 않습니다.
 - 승인 전 Workspace 중지 및 DB 전체 중지 재검증. 영수증 및 부분/전체 취소 반영.
 - 별도 callback HTML 응답은 공통 analytics/Channel Talk 레이아웃을 사용하지 않습니다. query 즉시 제거, no-store, no-referrer, nonce CSP 적용.
 - 복구는 원래 orderId 조회만 수행하며, NOT_FOUND/timeout 뒤 새 결제를 만들지 않습니다.
@@ -101,7 +101,7 @@ Invoice 기간은 `[period_start, period_end)`입니다. 기존 과거 `next_bil
 
 등록/청구 테스트 중에는 직접 인증 호출합니다. **Cron 스케줄은 아직 활성화하지 않았습니다.** Vercel Cron은 `CRON_SECRET`을 보내므로 이를 사용할 때는 `BILLING_CRON_SECRET`과 같은 값으로 맞춰야 합니다. 실제 플랜이 300초 Route duration을 지원하는지 확인합니다.
 
-한 호출에서 복구 2건, Invoice 생성 최대 50개 구독, 승인 2건을 제한합니다. Toss 요청은 65초 타임아웃입니다. 대기 건이 많으면 인증된 scheduler 호출 빈도를 조정합니다.
+한 호출에서 복구와 외부 취소 확인을 합쳐 최대 2건, Invoice 생성 최대 50개 구독, 승인 최대 2건으로 제한합니다. Toss 요청은 각각 65초 타임아웃입니다. Provider 요청만 최악의 경우 약 260초이므로 `maxDuration=300`에서 DB 처리와 런타임 오버헤드 여유는 약 40초입니다. 대기 건이 많으면 인증된 scheduler 호출 빈도를 조정합니다.
 
 승인은 다음 세 조건이 모두 true일 때만 가능합니다.
 
@@ -113,11 +113,13 @@ Invoice 기간은 `[period_start, period_end)`입니다. 기존 과거 `next_bil
 
 중지와 승인 검증은 DB에서 순서가 결정됩니다. **이미 최종 검증을 통과해 PG에 전달된 승인 요청은 중지로 취소되지 않습니다.** 이는 조회/복구 대상으로 남으며, 필요 시 별도 환불 운영을 진행합니다.
 
-만료된 `created` Attempt 중 `requested_at IS NULL`은 원래 lease를 무효화하고 미전송 실패로 정리합니다. `processing`/unknown은 오래됐어도 새 주문으로 바꾸지 않습니다. PG 조회가 계속 NOT_FOUND이면 운영자 확인이 필요합니다. 현재 구현은 불확실한 요청을 자동 재전송하지 않습니다.
+만료된 `created` Attempt 중 `requested_at IS NULL`은 원래 lease를 무효화하고 미전송 실패로 정리합니다. 승인 전 credential/중지 오류도 같은 경로로 처리하며 Invoice의 `retry_count`를 올리고 30분 뒤로 미룹니다. 기술 오류가 10회 연속이면 자동 Attempt 생성을 중단하고 담당자 확인 대상으로 전환합니다. `processing`/unknown은 오래됐어도 새 주문으로 바꾸지 않습니다. PG 조회가 계속 NOT_FOUND이면 운영자 확인이 필요합니다. 현재 구현은 불확실한 요청을 자동 재전송하지 않습니다.
 
 미납 재개: 서비스 전용 `billing_approve_arrears_retry(invoice_id, operator_user_id, reason)`로 **검토한 Invoice 1건씩** 승인합니다. 모든 과거 미납을 일괄 승인하지 않습니다. 정책 snapshot 금액을 유지하고 새 Attempt를 생성합니다.
 
-외부 환불은 succeeded Attempt를 순환 조회해 `payment_cancellations`에 거래키로 upsert합니다. 부분/전체 취소는 승인된 Invoice의 paid와 별도로 표시합니다. 대규모 실시간 반영이 필요하면 이후 webhook+provider 재조회 경로를 추가합니다.
+복구 Worker는 최근 10분 안에 확인하지 않은 미확정 Attempt를 먼저 조회합니다. 남는 슬롯에서만 최근 90일 내 succeeded Attempt를 24시간 간격으로 확인해 `payment_cancellations`에 거래키로 upsert합니다. 부분/전체 취소는 승인된 Invoice의 paid와 별도로 표시합니다. 대규모 실시간 반영이 필요하면 이후 webhook+provider 재조회 경로를 추가합니다.
+
+Toss가 새 빌링키를 발급한 뒤 DB 등록이 실패하면 해당 신규 키에 삭제 API를 최선 노력으로 호출합니다. 삭제도 실패하면 `billing.orphan_billing_key_cleanup_failed` 로그에 registration session과 Workspace ID만 남깁니다. 운영자는 Toss API 로그에서 idempotency key가 registration session ID인 발급 요청을 찾아 빌링키를 삭제하고, 원문 키를 내부 로그나 문서에 복사하지 않습니다.
 
 `billing_events`에 고객용 이벤트, `billing_operator_actions`에 내부 승인 기록을 남깁니다. 고객 알림 전송은 미연결입니다. 운영 모니터링은 `billing.worker_failed`, `billing.reconciliation_pending` 로그와 failed Invoice/configuration failure 조회를 출발점으로 연결해야 합니다. raw Toss response, authKey, billingKey, callback query는 로깅하지 않습니다. 배포 플랫폼/CDN의 callback query 기록 제거도 출시 전 확인합니다.
 

@@ -13,6 +13,7 @@ import {
   decryptCredential,
 } from "../../src/lib/billing/toss/crypto.ts";
 import { billingConfig } from "../../src/lib/billing/toss/config.ts";
+import { sameJsonValue } from "../../src/lib/billing/toss/json.ts";
 const ring = {
   active: "v2",
   keys: {
@@ -154,5 +155,29 @@ test("billing is off by default and preview cannot use production keys/database"
   );
   assert.throws(() =>
     billingConfig({ ...env, BILLING_TEST_SUPABASE_URL: undefined }),
+  );
+});
+test("consent comparison ignores object key order but detects changed terms", () => {
+  const server = {
+    amount: 590000,
+    policy: {
+      version: "v1",
+      retry: { basis: "billing_date", days: [1, 3, 5] },
+    },
+  };
+  const reordered = {
+    policy: {
+      retry: { days: [1, 3, 5], basis: "billing_date" },
+      version: "v1",
+    },
+    amount: 590000,
+  };
+  assert.equal(sameJsonValue(server, reordered), true);
+  assert.equal(
+    sameJsonValue(server, {
+      ...reordered,
+      amount: 990000,
+    }),
+    false,
   );
 });
