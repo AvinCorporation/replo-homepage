@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
+import { retryAt } from "../../src/lib/billing/toss/domain.ts";
 
 const workspace = "00000000-0000-0000-0000-000000000011";
 const otherWorkspace = "00000000-0000-0000-0000-000000000012";
@@ -33,6 +34,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
   for (const file of [
     "20260913062551_toss_billing_mvp.sql",
     "20260913132850_harden_toss_billing_workers.sql",
+    "20260913154000_split_billing_failure_counters.sql",
   ])
     await db.exec(
       await readFile(
@@ -94,7 +96,15 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
           "select billing_begin_registration($1,$2,'duplicate-hash','{\"version\":\"v1\",\"termsVersion\":\"v1\"}','{}')",
           [workspace, user],
         ),
-      /BILLING_REGISTRATION_IN_PROGRESS/,
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /BILLING_REGISTRATION_IN_PROGRESS/);
+        assert.equal(
+          (error as Error & { code?: string }).code,
+          "RB409",
+        );
+        return true;
+      },
     );
     await query(
       "update billing_registration_sessions set status='failed' where id=$1",
@@ -116,12 +126,14 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
       ]),
       false,
     );
-    assert.equal(
-      await scalar(
-        "select retry_count as value from billing_invoices where id=$1",
-        [invoice],
-      ),
-      1,
+    assert.deepEqual(
+      (
+        await query(
+          "select retry_count,technical_failure_count from billing_invoices where id=$1",
+          [invoice],
+        )
+      ).rows[0],
+      { retry_count: 0, technical_failure_count: 1 },
     );
     assert.equal(
       await scalar(
@@ -149,12 +161,14 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
       ]),
       null,
     );
-    assert.equal(
-      await scalar(
-        "select retry_count as value from billing_invoices where id=$1",
-        [invoice],
-      ),
-      1,
+    assert.deepEqual(
+      (
+        await query(
+          "select retry_count,technical_failure_count from billing_invoices where id=$1",
+          [invoice],
+        )
+      ).rows[0],
+      { retry_count: 0, technical_failure_count: 1 },
     );
     assert.equal(
       await scalar("select billing_claim_invoice($1) as value", [invoice]),
@@ -181,11 +195,22 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     assert.deepEqual(
       (
         await query(
-          "select status,retry_count,next_attempt_at from billing_invoices where id=$1",
+          "select status,retry_count,technical_failure_count,next_attempt_at from billing_invoices where id=$1",
           [invoice],
         )
       ).rows[0],
-      { status: "failed", retry_count: 10, next_attempt_at: null },
+      {
+        status: "failed",
+        retry_count: 0,
+        technical_failure_count: 10,
+        next_attempt_at: null,
+      },
+    );
+    assert.equal(
+      await scalar("select status as value from subscriptions where id=$1", [
+        subscription,
+      ]),
+      "active",
     );
     await query(
       "update billing_invoices set status='payment_pending',next_attempt_at=now() where id=$1",
@@ -207,17 +232,100 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
       "select billing_approve_arrears_retry($1,$2,'reviewed technical failures')",
       [invoice, user],
     );
-    assert.equal(
-      await scalar(
-        "select retry_count as value from billing_invoices where id=$1",
-        [invoice],
-      ),
-      0,
+    assert.deepEqual(
+      (
+        await query(
+          "select retry_count,technical_failure_count from billing_invoices where id=$1",
+          [invoice],
+        )
+      ).rows[0],
+      { retry_count: 0, technical_failure_count: 0 },
     );
   });
 
+  await t.test(
+    "technical failures do not consume the customer retry schedule",
+    async () => {
+      const invoice = await createInvoice(5);
+      for (let index = 0; index < 3; index++) {
+        await query(
+          "update billing_invoices set status='payment_pending',next_attempt_at=now() where id=$1",
+          [invoice],
+        );
+        const claimed = (await scalar(
+          "select billing_claim_invoice($1) as value",
+          [invoice],
+        )) as Record<string, unknown>;
+        await query("select billing_defer_attempt($1,'TEST_PREFLIGHT')", [
+          claimed.id,
+        ]);
+      }
+
+      assert.deepEqual(
+        (
+          await query(
+            "select retry_count,technical_failure_count from billing_invoices where id=$1",
+            [invoice],
+          )
+        ).rows[0],
+        { retry_count: 0, technical_failure_count: 3 },
+      );
+
+      await query(
+        "update billing_invoices set status='payment_pending',next_attempt_at=now() where id=$1",
+        [invoice],
+      );
+      const chargedAttempt = (await scalar(
+        "select billing_claim_invoice($1) as value",
+        [invoice],
+      )) as Record<string, unknown>;
+      assert.equal(
+        await scalar("select billing_authorize_attempt($1,$2) as value", [
+          chargedAttempt.id,
+          chargedAttempt.lease_token,
+        ]),
+        true,
+      );
+
+      const customerRetryCount = Number(
+        await scalar(
+          "select retry_count as value from billing_invoices where id=$1",
+          [invoice],
+        ),
+      );
+      const retryAtFirstPolicyOffset = retryAt(
+        { basis: "previous_failure", days: [1, 3, 5] },
+        "2027-05-01",
+        "2027-05-01T00:00:00.000Z",
+        customerRetryCount,
+      );
+      assert.equal(
+        retryAtFirstPolicyOffset,
+        "2027-05-02T00:00:00.000Z",
+      );
+
+      await query(
+        "select billing_record_failure($1,'retryable','NOT_ENOUGH_BALANCE','재시도 예정',$2)",
+        [chargedAttempt.id, retryAtFirstPolicyOffset],
+      );
+      assert.deepEqual(
+        (
+          await query(
+            "select status,retry_count,technical_failure_count from billing_invoices where id=$1",
+            [invoice],
+          )
+        ).rows[0],
+        {
+          status: "payment_pending",
+          retry_count: 1,
+          technical_failure_count: 3,
+        },
+      );
+    },
+  );
+
   await t.test("billing event references cannot cross workspaces", async () => {
-    const invoice = await createInvoice(4);
+    const invoice = await createInvoice(6);
     await assert.rejects(
       () =>
         query(

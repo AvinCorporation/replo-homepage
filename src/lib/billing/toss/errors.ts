@@ -31,7 +31,22 @@ const BILLING_ERRORS: Record<string, { status: number; error: string }> = {
     status: 422,
     error: "카드 등록을 완료하지 못했습니다. 기존 결제수단은 유지됩니다.",
   },
+  BILLING_PROVIDER_RESPONSE_INVALID: {
+    status: 502,
+    error:
+      "카드사 응답을 확인하지 못했습니다. 기존 결제수단은 유지됩니다. 잠시 후 다시 시도해 주세요.",
+  },
 };
+
+const BILLING_RPC_SQLSTATES: Record<string, string> = {
+  RB403: "BILLING_FORBIDDEN",
+  RB409: "BILLING_REGISTRATION_IN_PROGRESS",
+  RB410: "INVALID_REGISTRATION",
+};
+
+export function billingRpcErrorCode(sqlState: string | undefined) {
+  return (sqlState && BILLING_RPC_SQLSTATES[sqlState]) ?? null;
+}
 
 export function billingErrorDetails(code: string) {
   const response = BILLING_ERRORS[code];

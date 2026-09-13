@@ -11,7 +11,7 @@
 이번 코드 검증과 실제 PG 연동 검증을 구분합니다. Toss Test 카드 등록·변경·승인·실패·취소, 실제 Supabase RLS/API, 별도 연결 간 동시 Worker 테스트는 후속 작업입니다. 이 검증 전 MVP 출시 완료로 판단하지 않습니다.
 
 1. Toss 자동결제 사용 가능한 계약/MID와 **자동결제용 Test Client/Secret Key**를 확인합니다.
-2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
+2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql`, `20260913154000_split_billing_failure_counters.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
 3. 아래 환경변수를 Preview에 등록합니다. Secret을 Git/이슈/대화에 붙여넣지 않습니다.
 4. 개발 Auth User, Workspace, owner/admin/editor/viewer, 두 번째 Workspace를 준비합니다.
 5. 사업 정책과 기존 고객 전환 조건을 확인하고, 테스트 구독에 명시적으로 설정합니다.
@@ -113,13 +113,13 @@ Invoice 기간은 `[period_start, period_end)`입니다. 기존 과거 `next_bil
 
 중지와 승인 검증은 DB에서 순서가 결정됩니다. **이미 최종 검증을 통과해 PG에 전달된 승인 요청은 중지로 취소되지 않습니다.** 이는 조회/복구 대상으로 남으며, 필요 시 별도 환불 운영을 진행합니다.
 
-만료된 `created` Attempt 중 `requested_at IS NULL`은 원래 lease를 무효화하고 미전송 실패로 정리합니다. 승인 전 credential/중지 오류도 같은 경로로 처리하며 Invoice의 `retry_count`를 올리고 30분 뒤로 미룹니다. 기술 오류가 10회 연속이면 자동 Attempt 생성을 중단하고 담당자 확인 대상으로 전환합니다. `processing`/unknown은 오래됐어도 새 주문으로 바꾸지 않습니다. PG 조회가 계속 NOT_FOUND이면 운영자 확인이 필요합니다. 현재 구현은 불확실한 요청을 자동 재전송하지 않습니다.
+만료된 `created` Attempt 중 `requested_at IS NULL`은 원래 lease를 무효화하고 미전송 실패로 정리합니다. 승인 전 credential/중지 오류도 같은 경로로 처리하며 Invoice의 `technical_failure_count`만 올리고 30분 뒤로 미룹니다. 기술 오류가 10회 연속이면 자동 Attempt 생성을 중단하고 담당자 확인 대상으로 전환하되, 고객 재시도 횟수인 `retry_count`를 소진하거나 구독을 `past_due`로 바꾸지 않습니다. `processing`/unknown은 오래됐어도 새 주문으로 바꾸지 않습니다. PG 조회가 계속 NOT_FOUND이면 운영자 확인이 필요합니다. 현재 구현은 불확실한 요청을 자동 재전송하지 않습니다.
 
 미납 재개: 서비스 전용 `billing_approve_arrears_retry(invoice_id, operator_user_id, reason)`로 **검토한 Invoice 1건씩** 승인합니다. 모든 과거 미납을 일괄 승인하지 않습니다. 정책 snapshot 금액을 유지하고 새 Attempt를 생성합니다.
 
 복구 Worker는 최근 10분 안에 확인하지 않은 미확정 Attempt를 먼저 조회합니다. 남는 슬롯에서만 최근 90일 내 succeeded Attempt를 24시간 간격으로 확인해 `payment_cancellations`에 거래키로 upsert합니다. 부분/전체 취소는 승인된 Invoice의 paid와 별도로 표시합니다. 대규모 실시간 반영이 필요하면 이후 webhook+provider 재조회 경로를 추가합니다.
 
-Toss가 새 빌링키를 발급한 뒤 DB 등록이 실패하면 해당 신규 키에 삭제 API를 최선 노력으로 호출합니다. 삭제도 실패하면 `billing.orphan_billing_key_cleanup_failed` 로그에 registration session과 Workspace ID만 남깁니다. 운영자는 Toss API 로그에서 idempotency key가 registration session ID인 발급 요청을 찾아 빌링키를 삭제하고, 원문 키를 내부 로그나 문서에 복사하지 않습니다.
+Toss가 새 빌링키를 발급한 뒤 DB 등록이 실패하면 해당 신규 키에 공식 Core API의 `DELETE /v1/billing/{billingKey}`를 최선 노력으로 호출합니다. 경로와 메서드는 공식 문서로 확인했으며 Test 키를 이용한 실제 응답 검증은 아직 남아 있습니다. 삭제도 실패하면 `billing.orphan_billing_key_cleanup_failed` 로그에 registration session과 Workspace ID만 남깁니다. 운영자는 Toss API 로그에서 idempotency key가 registration session ID인 발급 요청을 찾아 빌링키를 삭제하고, 원문 키를 내부 로그나 문서에 복사하지 않습니다.
 
 `billing_events`에 고객용 이벤트, `billing_operator_actions`에 내부 승인 기록을 남깁니다. 고객 알림 전송은 미연결입니다. 운영 모니터링은 `billing.worker_failed`, `billing.reconciliation_pending` 로그와 failed Invoice/configuration failure 조회를 출발점으로 연결해야 합니다. raw Toss response, authKey, billingKey, callback query는 로깅하지 않습니다. 배포 플랫폼/CDN의 callback query 기록 제거도 출시 전 확인합니다.
 
@@ -129,9 +129,11 @@ Toss가 새 빌링키를 발급한 뒤 DB 등록이 실패하면 해당 신규 �
 npm ci
 npm run test:billing
 npm run test:dashboard
-npx tsc --noEmit
 npm run build
+npx tsc --noEmit
 ```
+
+브랜치 전환 뒤 삭제된 Route의 `.next/types`가 남아 있으면 유령 타입 오류가 날 수 있습니다. 이 경우 `.next`를 삭제하고 `npm run build`로 생성 타입을 다시 만든 뒤 `npx tsc --noEmit`을 실행합니다.
 
 DB 테스트는 PGlite(실제 PostgreSQL 엔진)와 기존 main의 최소 테이블 fixture를 사용합니다. SQL 문법·RLS·제약조건·트랜잭션 rollback은 검증하지만, **기존 migration 전체의 실 Supabase 적용 및 서로 다른 연결의 동시 실행 증명은 아닙니다.**
 
@@ -140,6 +142,7 @@ DB 테스트는 PGlite(실제 PostgreSQL 엔진)와 기존 main의 최소 테이
 - [ ] 개발 Supabase에 migration 전체 적용, RLS advisor 확인
 - [ ] A/B Workspace 및 owner/admin/editor/viewer API 접근 검증
 - [ ] Toss Test 카드 등록·변경·인증 실패·권한 회수·Workspace 이동
+- [ ] Toss Test 키로 `DELETE /v1/billing/{billingKey}` 성공·실패 응답 확인
 - [ ] 실제 승인, 명확한 거절, 정책별 재시도, 모든 재시도 소진
 - [ ] 서로 다른 Worker 연결의 동시 승인 요청 차단
 - [ ] Toss 성공 → DB write 장애 → 원래 orderId 복구
@@ -147,6 +150,7 @@ DB 테스트는 PGlite(실제 PostgreSQL 엔진)와 기존 main의 최소 테이
 - [ ] 외부 부분·전체 취소 반영 및 영수증 확인
 - [ ] 기존 납부기간 중복 청구 없음
 - [ ] Workspace pause / DB global kill switch / 환경변수 차단 테스트
+- [ ] 실제 Supabase/PostgREST에서 복구 조회의 두 `.or()` 필터가 AND로 적용되는지 확인
 - [ ] Preview가 개발 DB와 Test 키만 사용하는지 검증
 - [ ] 고객 동의·청구·해지·환불·알림 운영 문구 확정
 - [ ] 장애 알림 목적지 및 처리 담당자 연결

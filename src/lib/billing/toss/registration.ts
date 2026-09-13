@@ -144,7 +144,9 @@ export async function completeRegistration(input: {
         ownerType: billing.card.ownerType,
       },
     });
-  } catch {
+  } catch (error) {
+    const invalidProviderResponse =
+      error instanceof Error && error.message === "INVALID_TOSS_BILLING";
     // If Toss issued a new key but the DB transaction failed, remove only that
     // unpersisted key. Never revoke the prior card or retry an authKey.
     if (issuedBillingKey && toss) {
@@ -163,9 +165,11 @@ export async function completeRegistration(input: {
       .eq("id", session.id)
       .eq("status", "processing");
     throw new Error(
-      issuedBillingKey
-        ? "BILLING_DATABASE_ERROR"
-        : "BILLING_REGISTRATION_FAILED",
+      invalidProviderResponse
+        ? "BILLING_PROVIDER_RESPONSE_INVALID"
+        : issuedBillingKey
+          ? "BILLING_DATABASE_ERROR"
+          : "BILLING_REGISTRATION_FAILED",
     );
   }
 }

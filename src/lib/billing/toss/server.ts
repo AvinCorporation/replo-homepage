@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { billingConfig } from "./config";
-import { billingErrorDetails } from "./errors";
+import { billingErrorDetails, billingRpcErrorCode } from "./errors";
 export async function billingAccess(workspaceId?: string, manage = false) {
   const client = await createClient();
   const {
@@ -42,13 +42,7 @@ export async function rpc<T>(
 ): Promise<T> {
   const { data, error } = await billingAdmin().rpc(name, args);
   if (error) {
-    const safeCode = [
-      "BILLING_FORBIDDEN",
-      "BILLING_REGISTRATION_IN_PROGRESS",
-      "INVALID_REGISTRATION",
-      "REGISTRATION_ALREADY_USED",
-    ].find((code) => error.message.includes(code));
-    throw new Error(safeCode ?? "BILLING_DATABASE_ERROR");
+    throw new Error(billingRpcErrorCode(error.code) ?? "BILLING_DATABASE_ERROR");
   }
   return data as T;
 }
