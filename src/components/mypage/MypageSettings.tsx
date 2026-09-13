@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BillingSettings } from "./BillingSettings";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MemberManagement } from "@/components/mypage/MemberManagement";
@@ -24,27 +25,18 @@ type Props = {
     businessNumber: string;
     billingEmail: string;
   };
-  subscription: {
-    planName: string;
-    monthlyFee: number;
-    includedTickets: number;
-    nextBillingDate: string;
-  } | null;
-  paymentMethod: {
-    maskedNumber: string;
-    status: string;
-  } | null;
+
 };
 
 const menus: Array<{ id: Section; label: string; description: string }> = [
   { id: "profile", label: "고객 정보", description: "회사와 브랜드 정보" },
-  { id: "plan", label: "이용 플랜", description: "Free 플랜" },
+  { id: "plan", label: "이용 플랜", description: "플랜과 자동결제" },
   { id: "members", label: "멤버 관리", description: "구성원과 역할" },
 ];
 
 const sectionTitles: Record<Section, [string, string]> = {
   profile: ["고객 정보", "고객사와 브랜드의 기본 정보를 관리합니다."],
-  plan: ["이용 플랜", "선공개 기간에는 Free 플랜으로 제공됩니다."],
+  plan: ["이용 플랜", "이용 조건과 결제수단, 청구 내역을 확인합니다."],
   members: ["멤버 관리", "워크스페이스 구성원과 역할을 관리합니다."],
 };
 
@@ -184,22 +176,7 @@ export function MypageSettings(props: Props) {
           </form>
         ) : null}
 
-        {active === "plan" ? (
-          <section className="mypage-card">
-            <div className="mypage-card-head">
-              <div>
-                <h2>Free 플랜</h2>
-                <p>현재 런칭 준비 중입니다. 선공개 기간에는 Free 플랜으로 표시됩니다.</p>
-              </div>
-              <span>Free</span>
-            </div>
-            <div className="current-plan-summary">
-              <div><span>현재 플랜</span><strong>Free</strong></div>
-              <div><span>상태</span><strong>런칭 준비 중</strong></div>
-              <div><span>안내</span><strong>정식 오픈 이후 세부 플랜을 제공합니다.</strong></div>
-            </div>
-          </section>
-        ) : null}
+        {active === "plan" ? <BillingSettings /> : null}
 
         {active === "members" ? <div className="embedded-settings"><MemberManagement /></div> : null}
       </main>

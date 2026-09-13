@@ -43,3 +43,11 @@ npm run build
 ```
 
 운영 배포 설정은 [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md), DB 스키마는 [`docs/supabase.sql`](./docs/supabase.sql)을 참고하세요.
+
+## Toss 자동결제 MVP
+
+구현 현황, 환경변수, 사업 정책 설정, 중복 승인 방지 및 운영 절차는 [Billing README](docs/billing/README.md)에 정리되어 있습니다.
+
+**2026-09-13 사용자 확인:** 개발 Supabase와 Toss Test 키가 준비된 Preview는 아직 없습니다. Toss 키를 받은 뒤 실제 카드 등록·승인·실패·취소 테스트를 이어서 진행합니다. 그 전까지 자동결제는 기본 비활성화 상태이며 운영 DB 적용/배포/실제 결제를 실행하지 않습니다.
+
+로컬 검증: `npm run test:billing`, `npm run test:dashboard`, `npx tsc --noEmit`, `npm run build`.

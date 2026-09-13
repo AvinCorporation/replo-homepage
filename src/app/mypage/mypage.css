@@ -148,3 +148,22 @@
 @media (prefers-reduced-motion: reduce) {
   .mypage-progress span, .mypage-skel-line { animation: none; }
 }
+
+.billing-settings { display: grid; gap: 24px; min-width: 0; }
+.billing-settings h2 { margin: 0 0 18px; }
+.billing-primary { background:#5B47E0; color:white; padding:12px 18px; border:0; border-radius:8px; cursor:pointer; margin-top:12px; }
+.billing-primary:disabled { opacity:.5; cursor:default; }
+.billing-consent { border-top:1px solid #CBD2DA; margin-top:24px; padding-top:20px; line-height:1.8; }
+.billing-consent label { display:block; }
+.billing-table-scroll { overflow-x:auto; }
+.billing-table-scroll table { width:100%; border-collapse:collapse; text-align:left; font-size:14px; }
+.billing-table-scroll th,.billing-table-scroll td { padding:14px 10px; border-bottom:1px solid #CBD2DA; vertical-align:top; }
+.billing-table-scroll small { display:block; color:#6B7280; margin-top:6px; min-width:130px; }
+.billing-table-scroll a { color:#5B47E0; }
+.billing-settings { grid-template-columns: minmax(0, 1fr); padding-top: 26px; }
+.billing-settings > .mypage-card { min-width: 0; margin-top: 0; }
+.billing-consent { overflow-wrap: anywhere; }
+.billing-table-scroll { max-width: 100%; }
+
+.billing-table-scroll table { min-width: 640px; }
+.billing-table-scroll summary { cursor: pointer; margin-top: 8px; color: #5B47E0; }

@@ -53,15 +53,6 @@ export default async function MyPage() {
         businessNumber: customer.business_number ?? "",
         billingEmail: customer.billing_email ?? "",
       }}
-      subscription={
-        {
-          planName: "Free",
-          monthlyFee: 0,
-          includedTickets: 0,
-          nextBillingDate: "",
-        }
-      }
-      paymentMethod={null}
     />
   );
 }
