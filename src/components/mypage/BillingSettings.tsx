@@ -1,6 +1,6 @@
 "use client";
 import Script from "next/script";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   invoiceAmount,
   parsePolicy,
@@ -25,6 +25,16 @@ type Attempt = {
   approved_at: string | null;
   created_at?: string;
 };
+type PaymentMethod = {
+  id: string;
+  masked_number: string;
+  issuer_code: string;
+  card_type: string;
+  owner_type: string;
+  status: string;
+  is_default: boolean;
+  registered_at: string | null;
+};
 type Summary = {
   canManage: boolean;
   subscription: {
@@ -34,13 +44,9 @@ type Summary = {
     status: string;
     next_billing_date: string | null;
     billing_policy: BillingPolicy | null;
+    enrollment_confirmed_at: string | null;
   } | null;
-  paymentMethod: {
-    masked_number: string;
-    issuer_code: string;
-    card_type: string;
-    status: string;
-  } | null;
+  paymentMethods: PaymentMethod[];
   invoices: Invoice[];
   attempts: Attempt[];
   cancellations: Array<{
@@ -95,25 +101,26 @@ export function BillingSettings() {
   const [conditions, setConditions] = useState<Conditions | null>(null);
   const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
+  const loadSummary = useCallback(async () => {
+    const response = await fetch("/api/billing/summary", { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    setData(result);
+  }, []);
   useEffect(() => {
     let mounted = true;
-    fetch("/api/billing/summary", { cache: "no-store" })
-      .then(async (r) => {
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error);
-        if (mounted) setData(d);
-      })
-      .catch(() => {
-        if (mounted)
-          setError(
-            "결제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
-          );
-      });
+    loadSummary().catch(() => {
+      if (mounted)
+        setError(
+          "결제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
+        );
+    });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [loadSummary]);
   async function showConditions() {
     setBusy(true);
     setError("");
@@ -164,6 +171,31 @@ export function BillingSettings() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+  async function setPrimary(method: PaymentMethod) {
+    setSwitchingId(method.id);
+    setError("");
+    try {
+      const response = await fetch("/api/billing/payment-method/default", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethodId: method.id }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "주 결제수단을 변경하지 못했습니다.",
+        );
+      await loadSummary();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "주 결제수단을 변경하지 못했습니다.",
+      );
+    } finally {
+      setSwitchingId(null);
     }
   }
   const s = data?.subscription;
@@ -260,25 +292,90 @@ export function BillingSettings() {
           </section>
           <section className="mypage-card">
             <h2>결제수단</h2>
-            <p>
-              {data.paymentMethod
-                ? `${cardIssuerName(data.paymentMethod.issuer_code)} · ${data.paymentMethod.masked_number} · ${data.paymentMethod.card_type} · 등록됨`
-                : "등록된 자동결제 카드가 없습니다."}
-            </p>
-            {data.canManage ? (
-              <button
-                className="billing-primary"
-                onClick={showConditions}
-                disabled={busy}
-              >
-                {data.paymentMethod ? "카드 변경" : "카드 등록"}
-              </button>
+            {data.paymentMethods.length ? (
+              <div className="billing-card-list">
+                {data.paymentMethods.map((method) => (
+                  <article className="billing-card-item" key={method.id}>
+                    <div>
+                      <span className={method.is_default ? "primary" : "backup"}>
+                        {method.is_default ? "주 카드" : "백업 카드"}
+                      </span>
+                      <strong>
+                        {cardIssuerName(method.issuer_code)} ·{" "}
+                        {method.masked_number}
+                      </strong>
+                      <small>{method.card_type}</small>
+                    </div>
+                    {data.canManage && !method.is_default ? (
+                      <button
+                        type="button"
+                        className="billing-secondary"
+                        onClick={() => setPrimary(method)}
+                        disabled={switchingId !== null || busy}
+                      >
+                        {switchingId === method.id
+                          ? "변경 중…"
+                          : "주 결제수단으로 변경"}
+                      </button>
+                    ) : null}
+                  </article>
+                ))}
+              </div>
             ) : (
-              <p>카드 등록·변경은 소유자 또는 관리자에게 요청해 주세요.</p>
+              <p>등록된 자동결제 카드가 없습니다.</p>
+            )}
+            <p className="billing-card-note">
+              결제는 주 카드로만 진행됩니다. 백업 카드는 자동 승인에 사용되지
+              않으며, 주 결제수단으로 변경한 뒤부터 사용됩니다.
+            </p>
+            {!s?.enrollment_confirmed_at ? (
+              <p className="billing-action-notice">
+                담당자 확인 후 자동결제를 시작할 수 있습니다.{" "}
+                <a href="/contact">문의하기</a>
+              </p>
+            ) : data.canManage ? (
+              data.paymentMethods.length < 2 ? (
+                <button
+                  className="billing-primary"
+                  onClick={showConditions}
+                  disabled={busy}
+                >
+                  {data.paymentMethods.length === 0
+                    ? "주 카드 등록"
+                    : "백업 카드 등록"}
+                </button>
+              ) : (
+                <p className="billing-action-notice">
+                  주 카드와 백업 카드가 모두 등록되어 있습니다. 새 카드 등록은{" "}
+                  <a href="/contact">담당자에게 문의해 주세요.</a>
+                </p>
+              )
+            ) : (
+              <p className="billing-action-notice">
+                카드 등록·변경은 소유자 또는 관리자에게 요청해 주세요.{" "}
+                <a href="/mypage?section=members">멤버 확인</a>
+              </p>
             )}
             {conditions && (
               <div className="billing-consent">
-                <h3>자동결제 조건 확인</h3>
+                <div className="billing-consent-head">
+                  <h3>
+                    {data.paymentMethods.length === 0
+                      ? "주 카드 자동결제 조건 확인"
+                      : "백업 카드 등록 조건 확인"}
+                  </h3>
+                  <button
+                    type="button"
+                    className="billing-close"
+                    onClick={() => {
+                      setConditions(null);
+                      setAgreed(false);
+                    }}
+                    disabled={busy}
+                  >
+                    닫기
+                  </button>
+                </div>
                 <p>월 청구금액: {won(conditions.amount)} (VAT 포함)</p>
                 <p>
                   결제주기: 매월 {conditions.billingAnchorDay}일 · 해당 날짜가
@@ -297,8 +394,10 @@ export function BillingSettings() {
                     : "자동 재시도 없음"}
                 </p>
                 <p>
-                  카드 변경: 이 화면에서 변경할 수 있습니다. 기존 미납금
-                  재결제는 별도 확인 후 진행합니다.
+                  {data.paymentMethods.length === 0
+                    ? "등록한 첫 카드는 주 결제수단이 됩니다."
+                    : "새 카드는 백업으로 저장되며 기존 주 카드는 유지됩니다. 등록에 실패해도 기존 카드는 바뀌지 않습니다."}{" "}
+                  기존 미납금 재결제는 별도 확인 후 진행합니다.
                 </p>
                 <p>해지 요청: {conditions.policy.cancellationInstructions}</p>
                 <label>
@@ -314,7 +413,11 @@ export function BillingSettings() {
                   onClick={register}
                   disabled={!agreed || busy || !sdkReady}
                 >
-                  {busy ? "처리 중…" : "동의하고 카드 인증"}
+                  {busy
+                    ? "처리 중…"
+                    : !sdkReady
+                      ? "결제 모듈 불러오는 중…"
+                      : "동의하고 카드 인증"}
                 </button>
               </div>
             )}

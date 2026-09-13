@@ -11,7 +11,7 @@
 이번 코드 검증과 실제 PG 연동 검증을 구분합니다. Toss Test 카드 등록·변경·승인·실패·취소, 실제 Supabase RLS/API, 별도 연결 간 동시 Worker 테스트는 후속 작업입니다. 이 검증 전 MVP 출시 완료로 판단하지 않습니다.
 
 1. Toss 자동결제 사용 가능한 계약/MID와 **자동결제용 Test Client/Secret Key**를 확인합니다.
-2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql`, `20260913154000_split_billing_failure_counters.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
+2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql`, `20260913154000_split_billing_failure_counters.sql`, `20260914010000_primary_backup_payment_methods.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
 3. 아래 환경변수를 Preview에 등록합니다. Secret을 Git/이슈/대화에 붙여넣지 않습니다.
 4. 개발 Auth User, Workspace, owner/admin/editor/viewer, 두 번째 Workspace를 준비합니다.
 5. 사업 정책과 기존 고객 전환 조건을 확인하고, 테스트 구독에 명시적으로 설정합니다.
@@ -26,8 +26,9 @@
 - Invoice/Attempt/Consent/Credential/Registration/Cancellation/Profile 분리, 교차 Workspace 복합 FK, 청구기간·주문번호·멱등키 uniqueness.
 - Invoice 금액/기간/정책 및 Attempt 요청 identity의 DB 불변성.
 - AES-256-GCM, Workspace+카드 ID AAD, 키 버전 및 이전 키 복호화 지원. credential은 서비스 전용.
-- 1회·만료 state 해시, 등록 사용자·Workspace 고정, callback 권한 재검증, 카드 교체 단일 DB 트랜잭션.
-- 마이페이지 실제 구독·카드·예정금액·청구·실패·취소 조회 및 Toss SDK 카드 인증.
+- 1회·만료 state 해시, 등록 사용자·Workspace 고정, callback 권한 재검증, 주 카드 전환 단일 DB 트랜잭션.
+- 마이페이지 실제 구독·주 카드·백업 카드·예정금액·청구·실패·취소 조회 및 Toss SDK 카드 인증.
+- 활성 Toss 카드는 Workspace당 최대 2장입니다. 첫 카드는 주 카드, 두 번째 카드는 백업 카드로 저장되며 owner/admin이 주 카드를 바꿀 수 있습니다. Worker는 주 카드만 사용하고 백업 카드를 자동 대체 승인하지 않습니다. 기존 주 카드의 승인이 아직 확정되지 않았으면 결과가 반영될 때까지 전환을 차단합니다.
 - 생성/승인/복구 Worker 분리. Invoice generation cursor와 결제 성공 시 다음 결제일 분리. Invoice별 오류를 격리해 한 건의 credential/DB 오류가 같은 배치의 다음 청구를 막지 않습니다.
 - 승인 전 Workspace 중지 및 DB 전체 중지 재검증. 영수증 및 부분/전체 취소 반영.
 - 별도 callback HTML 응답은 공통 analytics/Channel Talk 레이아웃을 사용하지 않습니다. query 즉시 제거, no-store, no-referrer, nonce CSP 적용.
@@ -158,6 +159,7 @@ DB 테스트는 PGlite(실제 PostgreSQL 엔진)와 기존 main의 최소 테이
 
 ## 참고 문서
 
+- [자동결제 운영·사용성 로드맵](ROADMAP.md)
 - [Toss 자동결제 연동](https://docs.tosspayments.com/guides/v2/billing/integration)
 - [Toss API: 승인·주문번호 조회·빌링키](https://docs.tosspayments.com/reference)
 - [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security)

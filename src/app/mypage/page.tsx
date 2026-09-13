@@ -14,7 +14,11 @@ const roleLabels: Record<string, string> = {
   viewer: "뷰어",
 };
 
-export default async function MyPage() {
+export default async function MyPage({
+  searchParams,
+}: {
+  searchParams?: { section?: string };
+}) {
   const claims = await getSessionClaims();
   if (!claims) redirect("/login");
 
@@ -37,6 +41,11 @@ export default async function MyPage() {
 
   return (
     <MypageSettings
+      initialSection={
+        searchParams?.section === "plan" || searchParams?.section === "members"
+          ? searchParams.section
+          : "profile"
+      }
       canManage={access.membership.role === "owner" || access.membership.role === "admin"}
       loginEmail={loginEmail}
       roleLabel={roleLabels[access.membership.role] ?? access.membership.role}

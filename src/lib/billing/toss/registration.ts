@@ -3,7 +3,11 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { billingAccess, billingAdmin, rpc } from "./server";
 import { billingConfig } from "./config";
 import { encryptCredential, stateDigest } from "./crypto";
-import { invoiceAmount, parsePolicy } from "./domain";
+import {
+  confirmedFirstChargeDate,
+  invoiceAmount,
+  parsePolicy,
+} from "./domain";
 import { TossClient } from "./client";
 import { sameJsonValue } from "./json";
 export async function registrationConditions(workspaceId: string) {
@@ -30,7 +34,10 @@ export async function registrationConditions(workspaceId: string) {
     policy,
     amount: invoiceAmount(subscription.monthly_fee, policy.vat),
     cycle: "monthly",
-    firstChargeDate: subscription.next_billing_date,
+    firstChargeDate: confirmedFirstChargeDate(
+      policy.firstCharge,
+      subscription.next_billing_date,
+    ),
     billingAnchorDay: subscription.billing_anchor_day,
   };
   return conditions;

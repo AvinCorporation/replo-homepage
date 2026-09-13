@@ -9,6 +9,7 @@ const otherWorkspace = "00000000-0000-0000-0000-000000000012";
 const user = "10000000-0000-0000-0000-000000000011";
 const subscription = "20000000-0000-0000-0000-000000000011";
 const method = "30000000-0000-0000-0000-000000000011";
+const backupMethod = "30000000-0000-0000-0000-000000000012";
 
 test("worker hardening migration enforces backoff and circuit breakers", async (t) => {
   const db = new PGlite();
@@ -35,6 +36,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     "20260913062551_toss_billing_mvp.sql",
     "20260913132850_harden_toss_billing_workers.sql",
     "20260913154000_split_billing_failure_counters.sql",
+    "20260914010000_primary_backup_payment_methods.sql",
   ])
     await db.exec(
       await readFile(
@@ -112,12 +114,129 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     );
   });
 
+  await t.test(
+    "a second card stays backup and can be promoted without revoking the first",
+    async () => {
+      const secondRegistration = await scalar(
+        "select billing_begin_registration($1,$2,'backup-hash','{\"version\":\"v1\",\"termsVersion\":\"v1\"}','{}') as value",
+        [workspace, user],
+      );
+      await query(
+        "update billing_registration_sessions set status='processing' where id=$1",
+        [secondRegistration],
+      );
+      await query(
+        "select billing_complete_registration($1,$2,$3,'backup-ciphertext','v1','{\"maskedNumber\":\"****5678\"}')",
+        [secondRegistration, user, backupMethod],
+      );
+
+      assert.deepEqual(
+        (
+          await query(
+            "select id,is_default,status from payment_methods where workspace_id=$1 and provider='toss' order by registered_at,id",
+            [workspace],
+          )
+        ).rows,
+        [
+          { id: method, is_default: true, status: "active" },
+          { id: backupMethod, is_default: false, status: "active" },
+        ],
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select count(*) as value from billing_credentials where workspace_id=$1 and status='active'",
+            [workspace],
+          ),
+        ),
+        2,
+      );
+
+      await query(
+        "select billing_set_default_payment_method($1,$2,$3)",
+        [workspace, backupMethod, user],
+      );
+      assert.deepEqual(
+        (
+          await query(
+            "select id,is_default from payment_methods where workspace_id=$1 and provider='toss' order by id",
+            [workspace],
+          )
+        ).rows,
+        [
+          { id: method, is_default: false },
+          { id: backupMethod, is_default: true },
+        ],
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select count(*) as value from billing_operator_actions where workspace_id=$1 and action='primary_payment_method_changed'",
+            [workspace],
+          ),
+        ),
+        1,
+      );
+    },
+  );
+
+  await t.test("a third active Toss card is rejected before registration", async () => {
+    await assert.rejects(
+      () =>
+        query(
+          "select billing_begin_registration($1,$2,'third-hash','{\"version\":\"v1\",\"termsVersion\":\"v1\"}','{}')",
+          [workspace, user],
+        ),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /BILLING_PAYMENT_METHOD_LIMIT/);
+        assert.equal((error as Error & { code?: string }).code, "RB429");
+        return true;
+      },
+    );
+
+    await assert.rejects(
+      () =>
+        query(
+          "insert into payment_methods(id,workspace_id,provider,masked_number,status,is_default) values(gen_random_uuid(),$1,'toss','****9999','active',false)",
+          [workspace],
+        ),
+      /BILLING_PAYMENT_METHOD_LIMIT/,
+    );
+  });
+
+  await t.test("primary switching waits for an unresolved charge", async () => {
+    const invoice = await createInvoice(8);
+    const claimed = (await scalar(
+      "select billing_claim_invoice($1) as value",
+      [invoice],
+    )) as Record<string, unknown>;
+    assert.equal(claimed.payment_method_id, backupMethod);
+
+    await assert.rejects(
+      () =>
+        query("select billing_set_default_payment_method($1,$2,$3)", [
+          workspace,
+          method,
+          user,
+        ]),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /BILLING_PAYMENT_IN_PROGRESS/);
+        assert.equal((error as Error & { code?: string }).code, "RB423");
+        return true;
+      },
+    );
+    await query("select billing_defer_attempt($1,'TEST_CLEANUP')", [claimed.id]);
+  });
+
   await t.test("pause immediately before dispatch adds a 30 minute backoff", async () => {
     const invoice = await createInvoice(1);
     const claimed = (await scalar(
       "select billing_claim_invoice($1) as value",
       [invoice],
     )) as Record<string, unknown>;
+    assert.equal(claimed.payment_method_id, backupMethod);
     await query("update billing_runtime_settings set charges_enabled=false");
     assert.equal(
       await scalar("select billing_authorize_attempt($1,$2) as value", [

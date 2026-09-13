@@ -155,6 +155,23 @@
 .billing-primary:disabled { opacity:.5; cursor:default; }
 .billing-consent { border-top:1px solid #CBD2DA; margin-top:24px; padding-top:20px; line-height:1.8; overflow-wrap:anywhere; }
 .billing-consent label { display:block; }
+.billing-consent-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.billing-consent-head h3 { margin:0; }
+.billing-close { border:0; background:transparent; color:#667085; cursor:pointer; padding:8px; }
+.billing-close:disabled { opacity:.5; cursor:default; }
+.billing-card-list { display:grid; gap:12px; }
+.billing-card-item { display:flex; align-items:center; justify-content:space-between; gap:18px; border:1px solid #E1E5EC; border-radius:12px; padding:16px; background:#FAFBFC; }
+.billing-card-item strong,.billing-card-item small { display:block; }
+.billing-card-item strong { margin-top:9px; }
+.billing-card-item small { margin-top:5px; color:#6B7280; }
+.billing-card-item span { display:inline-flex; border-radius:999px; padding:4px 9px; font-size:11px; font-weight:800; }
+.billing-card-item span.primary { background:#ECE9FF; color:#4D3AC7; }
+.billing-card-item span.backup { background:#EEF1F5; color:#536071; }
+.billing-secondary { flex:0 0 auto; border:1px solid #5B47E0; border-radius:8px; background:#fff; color:#5B47E0; padding:10px 13px; font-weight:700; cursor:pointer; }
+.billing-secondary:disabled { opacity:.5; cursor:default; }
+.billing-card-note,.billing-action-notice { color:#667085; line-height:1.6; }
+.billing-card-note { font-size:13px; }
+.billing-action-notice a { color:#5B47E0; font-weight:700; }
 .billing-table-scroll { overflow-x:auto; max-width:100%; }
 .billing-table-scroll table { width:100%; min-width:640px; border-collapse:collapse; text-align:left; font-size:14px; }
 .billing-table-scroll th,.billing-table-scroll td { padding:14px 10px; border-bottom:1px solid #CBD2DA; vertical-align:top; }
@@ -162,3 +179,7 @@
 .billing-table-scroll a { color:#5B47E0; }
 .billing-settings > .mypage-card { min-width: 0; margin-top: 0; }
 .billing-table-scroll summary { cursor: pointer; margin-top: 8px; color: #5B47E0; }
+@media (max-width: 600px) {
+  .billing-card-item { align-items:stretch; flex-direction:column; }
+  .billing-secondary { width:100%; }
+}

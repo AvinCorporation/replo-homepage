@@ -20,6 +20,12 @@ test("expected customer actions use conflict or validation responses", () => {
     billingErrorDetails("BILLING_PROVIDER_RESPONSE_INVALID").status,
     502,
   );
+  assert.equal(billingErrorDetails("BILLING_PAYMENT_METHOD_LIMIT").status, 409);
+  assert.equal(
+    billingErrorDetails("BILLING_PAYMENT_METHOD_NOT_AVAILABLE").status,
+    409,
+  );
+  assert.equal(billingErrorDetails("BILLING_PAYMENT_IN_PROGRESS").status, 409);
 });
 
 test("unknown internal errors keep a generic 503 surface", () => {
@@ -37,6 +43,12 @@ test("RPC errors are classified by exact SQLSTATE", () => {
     billingRpcErrorCode("RB409"),
     "BILLING_REGISTRATION_IN_PROGRESS",
   );
+  assert.equal(billingRpcErrorCode("RB429"), "BILLING_PAYMENT_METHOD_LIMIT");
+  assert.equal(
+    billingRpcErrorCode("RB404"),
+    "BILLING_PAYMENT_METHOD_NOT_AVAILABLE",
+  );
+  assert.equal(billingRpcErrorCode("RB423"), "BILLING_PAYMENT_IN_PROGRESS");
   assert.equal(billingRpcErrorCode("23505"), null);
   assert.equal(billingRpcErrorCode(undefined), null);
 });

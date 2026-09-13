@@ -9,18 +9,21 @@ export async function GET() {
       db
         .from("subscriptions")
         .select(
-          "id,plan_name,monthly_fee,included_tickets,status,next_billing_date,billing_policy",
+          "id,plan_name,monthly_fee,included_tickets,status,next_billing_date,billing_policy,enrollment_confirmed_at",
         )
         .eq("workspace_id", access.workspaceId)
         .order("created_at", { ascending: false })
         .limit(1),
       db
         .from("payment_methods")
-        .select("id,masked_number,issuer_code,card_type,owner_type,status")
+        .select(
+          "id,masked_number,issuer_code,card_type,owner_type,status,is_default,registered_at",
+        )
         .eq("workspace_id", access.workspaceId)
         .eq("provider", "toss")
-        .eq("is_default", true)
-        .eq("status", "active"),
+        .eq("status", "active")
+        .order("is_default", { ascending: false })
+        .order("registered_at", { ascending: true }),
       db
         .from("billing_invoices")
         .select(
@@ -56,7 +59,7 @@ export async function GET() {
       {
         canManage: access.canManage,
         subscription: results[0].data?.[0] ?? null,
-        paymentMethod: results[1].data?.[0] ?? null,
+        paymentMethods: results[1].data ?? [],
         invoices: results[2].data,
         attempts: results[3].data,
         cancellations: results[4].data,

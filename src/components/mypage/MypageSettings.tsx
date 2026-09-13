@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 type Section = "profile" | "plan" | "members";
 
 type Props = {
+  initialSection?: Section;
   canManage: boolean;
   loginEmail: string;
   roleLabel: string;
@@ -60,7 +61,9 @@ const profileFields: Array<{
 
 export function MypageSettings(props: Props) {
   const router = useRouter();
-  const [active, setActive] = useState<Section>("profile");
+  const [active, setActive] = useState<Section>(
+    props.initialSection ?? "profile",
+  );
   const [profile, setProfile] = useState(props.customer);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -114,6 +117,7 @@ export function MypageSettings(props: Props) {
               className={active === menu.id ? "active" : ""}
               onClick={() => {
                 setActive(menu.id);
+                router.replace(`/mypage?section=${menu.id}`, { scroll: false });
                 setMessage("");
                 setError("");
               }}

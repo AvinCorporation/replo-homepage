@@ -55,6 +55,14 @@ export function dateOnly(value: string): string {
     throw new Error("INVALID_DATE");
   return value;
 }
+export function confirmedFirstChargeDate(
+  firstCharge: BillingPolicy["firstCharge"],
+  value: string | null,
+): string | null {
+  if (firstCharge === "contract_date" && !value)
+    throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+  return value === null ? null : dateOnly(value);
+}
 export function cycleDate(year: number, month: number, anchor: number): string {
   if (!Number.isInteger(anchor) || anchor < 1 || anchor > 31)
     throw new Error("INVALID_ANCHOR");

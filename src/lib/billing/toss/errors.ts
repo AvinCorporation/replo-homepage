@@ -19,6 +19,18 @@ const BILLING_ERRORS: Record<string, { status: number; error: string }> = {
     status: 409,
     error: "진행 중인 카드 등록이 있습니다. 잠시 후 다시 시도해 주세요.",
   },
+  BILLING_PAYMENT_METHOD_LIMIT: {
+    status: 409,
+    error: "주 카드와 백업 카드가 이미 등록되어 있습니다. 새 카드를 등록하려면 담당자에게 문의해 주세요.",
+  },
+  BILLING_PAYMENT_METHOD_NOT_AVAILABLE: {
+    status: 409,
+    error: "선택한 카드를 주 결제수단으로 변경할 수 없습니다. 결제수단을 다시 확인해 주세요.",
+  },
+  BILLING_PAYMENT_IN_PROGRESS: {
+    status: 409,
+    error: "확인 중인 결제가 있어 주 카드를 변경할 수 없습니다. 결제 결과가 반영된 뒤 다시 시도해 주세요.",
+  },
   REGISTRATION_ALREADY_USED: {
     status: 409,
     error: "이미 처리된 카드 등록 요청입니다. 마이페이지에서 다시 시작해 주세요.",
@@ -42,6 +54,9 @@ const BILLING_RPC_SQLSTATES: Record<string, string> = {
   RB403: "BILLING_FORBIDDEN",
   RB409: "BILLING_REGISTRATION_IN_PROGRESS",
   RB410: "INVALID_REGISTRATION",
+  RB429: "BILLING_PAYMENT_METHOD_LIMIT",
+  RB404: "BILLING_PAYMENT_METHOD_NOT_AVAILABLE",
+  RB423: "BILLING_PAYMENT_IN_PROGRESS",
 };
 
 export function billingRpcErrorCode(sqlState: string | undefined) {

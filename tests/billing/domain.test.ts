@@ -7,6 +7,7 @@ import {
   retryAt,
   failureCategory,
   seoulToday,
+  confirmedFirstChargeDate,
 } from "../../src/lib/billing/toss/domain.ts";
 import {
   encryptCredential,
@@ -46,6 +47,15 @@ test("unconfirmed business rules do not get production defaults", () => {
       cancellationInstructions: "담당자 문의",
       retry: { basis: "billing_date", days: [3, 1] },
     }),
+  );
+  assert.throws(
+    () => confirmedFirstChargeDate("contract_date", null),
+    /BILLING_POLICY_NOT_CONFIRMED/,
+  );
+  assert.equal(confirmedFirstChargeDate("registration", null), null);
+  assert.equal(
+    confirmedFirstChargeDate("contract_date", "2026-10-31"),
+    "2026-10-31",
   );
 });
 test("retry schedule anchored explicitly and no catch-up bursts", () => {
