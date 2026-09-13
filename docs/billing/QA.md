@@ -4,13 +4,13 @@
 
 | 확인 | 결과 | 범위 |
 | --- | --- | --- |
-| `npm run test:billing` | 43 tests PASS | domain, 암호화, Test transport, callback 보안, Worker 오케스트레이션, PGlite DB |
+| `npm run test:billing` | 46 tests PASS | domain, 암호화, Test transport, callback 보안, 요금제 변경, Worker 오케스트레이션, PGlite DB |
 | `npm run test:dashboard` | 10 tests PASS | 기존 상담 지표/CSV/시크릿 비교 회귀 |
 | `npx tsc --noEmit` | PASS | 최종 소스와 Next 생성 타입 |
 | `npm run build` | PASS | 실제 키/개발 DB 없이 production bundle 생성 |
-| 마이페이지 브라우저 | PASS | 실제 컴포넌트에 합성 API fixture 주입, 주/백업 카드와 동의 닫기 확인 |
+| 마이페이지 브라우저 | PASS | 실제 컴포넌트에 합성 API fixture 주입, 주/백업 카드와 요금제 선택·동의·예약 확인 |
 | 동의 | PASS | 미동의 시 카드 인증 버튼 disabled, 동의 후 enabled |
-| 모바일 390px | PASS | document scrollWidth=390, 카드 width=302, page overflow 없음 |
+| 모바일 390px | PASS | document scrollWidth=390, 요금제 카드와 닫기 버튼, page overflow 없음 |
 | callback | PASS | nonce style/script, 외부 script 0개, query 제거, 이용 플랜 복귀 링크 |
 | 공개 Worker 호출 | 401 | secret 없는 호출 차단 |
 
@@ -41,5 +41,8 @@ PGlite SQL 테스트는 다음을 포함합니다.
 - 등록 세션 중복의 명시적 conflict, billing event 교차 Workspace FK
 - 등록 RPC 오류를 메시지 부분 문자열이 아닌 전용 SQLSTATE로 분류
 - JSON key 순서와 무관한 동의 비교, 신규 빌링키 고아 정리 DELETE
+- KST 다음 달 1일 경계, 요금제 VAT 별도 동의 snapshot과 서버 재검증
+- 라이트→베이직 예약, 프로로 예약 교체, 엔터프라이즈 자동 변경 차단
+- 적용 전 기존 Invoice 보존, 적용 후 프로 VAT 포함 1,969,000원 Invoice 승인
 
 임베디드 DB의 동시 호출 테스트는 여러 외부 DB 연결 사이의 실 경합 검증을 대체하지 않습니다. 실제 Supabase/PG 연결은 [후속 체크리스트](README.md#후속-작업-toss-키-수령-후-진행)에 따라 Toss 키 수령 후 수행합니다.

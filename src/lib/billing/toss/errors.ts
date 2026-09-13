@@ -31,6 +31,23 @@ const BILLING_ERRORS: Record<string, { status: number; error: string }> = {
     status: 409,
     error: "확인 중인 결제가 있어 주 카드를 변경할 수 없습니다. 결제 결과가 반영된 뒤 다시 시도해 주세요.",
   },
+  BILLING_PLAN_CHANGE_UNAVAILABLE: {
+    status: 409,
+    error:
+      "현재 구독 상태에서는 요금제를 변경할 수 없습니다. 담당자에게 문의해 주세요.",
+  },
+  BILLING_PLAN_REQUIRES_QUOTE: {
+    status: 409,
+    error: "엔터프라이즈 요금제는 이용 범위와 금액을 담당자와 협의해 주세요.",
+  },
+  BILLING_PLAN_CONSENT_CHANGED: {
+    status: 409,
+    error: "요금제 조건이 변경되었습니다. 최신 조건을 확인하고 다시 동의해 주세요.",
+  },
+  BILLING_PLAN_ALREADY_ACTIVE: {
+    status: 409,
+    error: "현재 이용 중인 요금제입니다. 다른 요금제를 선택해 주세요.",
+  },
   REGISTRATION_ALREADY_USED: {
     status: 409,
     error: "이미 처리된 카드 등록 요청입니다. 마이페이지에서 다시 시작해 주세요.",
@@ -57,6 +74,10 @@ const BILLING_RPC_SQLSTATES: Record<string, string> = {
   RB429: "BILLING_PAYMENT_METHOD_LIMIT",
   RB404: "BILLING_PAYMENT_METHOD_NOT_AVAILABLE",
   RB423: "BILLING_PAYMENT_IN_PROGRESS",
+  RB424: "BILLING_PLAN_CHANGE_UNAVAILABLE",
+  RB425: "BILLING_PLAN_REQUIRES_QUOTE",
+  RB426: "BILLING_PLAN_CONSENT_CHANGED",
+  RB427: "BILLING_PLAN_ALREADY_ACTIVE",
 };
 
 export function billingRpcErrorCode(sqlState: string | undefined) {

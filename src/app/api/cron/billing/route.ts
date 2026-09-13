@@ -1,6 +1,7 @@
 import { isValidBearerSecret } from "@/lib/security/cron";
 import { billingConfig } from "@/lib/billing/toss/config";
 import {
+  applyPlanChanges,
   generateInvoices,
   processCharges,
   reconcilePayments,
@@ -18,10 +19,17 @@ export async function GET(request: Request) {
   try {
     const config = billingConfig();
     const recovered = await reconcilePayments();
+    const planChangesApplied = await applyPlanChanges();
     const generated = await generateInvoices();
     const charged = config.chargesEnabled ? await processCharges() : 0;
     return Response.json(
-      { recovered, generated, charged, chargesEnabled: config.chargesEnabled },
+      {
+        recovered,
+        planChangesApplied,
+        generated,
+        charged,
+        chargesEnabled: config.chargesEnabled,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch {

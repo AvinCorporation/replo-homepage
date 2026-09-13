@@ -37,6 +37,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     "20260913132850_harden_toss_billing_workers.sql",
     "20260913154000_split_billing_failure_counters.sql",
     "20260914010000_primary_backup_payment_methods.sql",
+    "20260914020000_scheduled_plan_changes.sql",
   ])
     await db.exec(
       await readFile(
@@ -454,4 +455,239 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
       /foreign key/,
     );
   });
+
+  await t.test(
+    "plan changes preserve old invoices and authorize the new monthly amount",
+    async () => {
+      const policy = {
+        version: "v1",
+        termsVersion: "v1",
+        vat: "excluded",
+        firstCharge: "contract_date",
+        cardChangeArrears: "manual_approval",
+        cancellationInstructions: "담당자 문의",
+        retry: { basis: "billing_date", days: [1, 3, 5] },
+      };
+      await query(
+        "update subscriptions set plan_name='Lite',monthly_fee=590000,included_tickets=200,billing_policy=$2,auto_charge_start_date='2026-09-01',first_period_start='2026-09-01',billing_anchor_day=1,enrollment_confirmed_at=null,updated_at=now() where id=$1",
+        [subscription, JSON.stringify(policy)],
+      );
+      const oldInvoice = await scalar(
+        "insert into billing_invoices(workspace_id,subscription_id,billing_date,period_start,period_end,amount,policy_snapshot,next_billing_date,next_attempt_at) values($1,$2,'2029-01-01','2029-01-01','2029-02-01',649000,$3,'2029-02-01',now()) returning id as value",
+        [workspace, subscription, JSON.stringify(policy)],
+      );
+      const effectiveOn = String(
+        await scalar(
+          "select ((date_trunc('month',now() at time zone 'Asia/Seoul')+interval '1 month')::date)::text as value",
+        ),
+      );
+      const conditions = (code: string, name: string, fee: number, tickets: number) => ({
+        termsVersion: "v1",
+        fromPlan: "Lite",
+        planCode: code,
+        planName: name,
+        monthlyFee: fee,
+        includedTickets: tickets,
+        vat: "excluded",
+        vatAmount: fee / 10,
+        totalAmount: fee + fee / 10,
+        effectiveOn,
+      });
+
+      await assert.rejects(
+        () =>
+          query(
+            "select billing_schedule_plan_change($1,$2,$3,'Enterprise',$4,$5,$6)",
+            [
+              workspace,
+              subscription,
+              user,
+              effectiveOn,
+              JSON.stringify(policy),
+              JSON.stringify({}),
+            ],
+          ),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, /BILLING_PLAN_REQUIRES_QUOTE/);
+          assert.equal((error as Error & { code?: string }).code, "RB425");
+          return true;
+        },
+      );
+
+      await assert.rejects(
+        () =>
+          query(
+            "select billing_schedule_plan_change($1,$2,$3,'Basic',$4,$5,$6)",
+            [
+              workspace,
+              subscription,
+              user,
+              effectiveOn,
+              JSON.stringify({
+                ...policy,
+                retry: { basis: "billing_date", days: [99] },
+              }),
+              JSON.stringify(conditions("Basic", "베이직", 990000, 500)),
+            ],
+          ),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, /BILLING_PLAN_CONSENT_CHANGED/);
+          assert.equal((error as Error & { code?: string }).code, "RB426");
+          return true;
+        },
+      );
+
+      const basicChange = await scalar(
+        "select billing_schedule_plan_change($1,$2,$3,'Basic',$4,$5,$6) as value",
+        [
+          workspace,
+          subscription,
+          user,
+          effectiveOn,
+          JSON.stringify(policy),
+          JSON.stringify(conditions("Basic", "베이직", 990000, 500)),
+        ],
+      );
+      assert.deepEqual(
+        (
+          await query(
+            "select plan_name,monthly_fee::integer as monthly_fee,included_tickets from subscriptions where id=$1",
+            [subscription],
+          )
+        ).rows[0],
+        { plan_name: "Lite", monthly_fee: 590000, included_tickets: 200 },
+      );
+      await assert.rejects(
+        () =>
+          query(
+            "update subscription_plan_changes set consent_conditions='{}' where id=$1",
+            [basicChange],
+          ),
+        /PLAN_CHANGE_CONSENT_IMMUTABLE/,
+      );
+
+      const proChange = await scalar(
+        "select billing_schedule_plan_change($1,$2,$3,'Pro',$4,$5,$6) as value",
+        [
+          workspace,
+          subscription,
+          user,
+          effectiveOn,
+          JSON.stringify(policy),
+          JSON.stringify(conditions("Pro", "프로", 1790000, 1000)),
+        ],
+      );
+      assert.equal(
+        await scalar(
+          "select status as value from subscription_plan_changes where id=$1",
+          [basicChange],
+        ),
+        "canceled",
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select count(*) as value from subscription_plan_changes where subscription_id=$1 and status='scheduled'",
+            [subscription],
+          ),
+        ),
+        1,
+      );
+      await query(
+        "update subscription_plan_changes set status='canceled',canceled_at=now(),updated_at=now() where id=$1",
+        [proChange],
+      );
+      const dueEffectiveOn = String(
+        await scalar(
+          "select ((now() at time zone 'Asia/Seoul')::date)::text as value",
+        ),
+      );
+      const dueConditions = {
+        ...conditions("Pro", "프로", 1790000, 1000),
+        effectiveOn: dueEffectiveOn,
+      };
+      const appliedChange = await scalar(
+        "insert into subscription_plan_changes(workspace_id,subscription_id,requested_by,from_plan_name,from_monthly_fee,from_included_tickets,to_plan_code,to_monthly_fee,to_included_tickets,billing_policy_snapshot,consent_conditions,effective_on) values($1,$2,$3,'Lite',590000,200,'Pro',1790000,1000,$4,$5,$6) returning id as value",
+        [
+          workspace,
+          subscription,
+          user,
+          JSON.stringify(policy),
+          JSON.stringify(dueConditions),
+          dueEffectiveOn,
+        ],
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select billing_apply_due_plan_changes(50) as value",
+          ),
+        ),
+        1,
+      );
+      assert.deepEqual(
+        (
+          await query(
+            "select plan_name,monthly_fee::integer as monthly_fee,included_tickets,billing_policy->>'vat' as vat,active_plan_change_id from subscriptions where id=$1",
+            [subscription],
+          )
+        ).rows[0],
+        {
+          plan_name: "Pro",
+          monthly_fee: 1790000,
+          included_tickets: 1000,
+          vat: "excluded",
+          active_plan_change_id: appliedChange,
+        },
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select amount as value from billing_invoices where id=$1",
+            [oldInvoice],
+          ),
+        ),
+        649000,
+      );
+
+      await query(
+        "update subscriptions set enrollment_confirmed_at=now(),updated_at=now() where id=$1",
+        [subscription],
+      );
+      const updatedAt = await scalar(
+        "select updated_at as value from subscriptions where id=$1",
+        [subscription],
+      );
+      assert.equal(
+        await scalar(
+          "select billing_create_invoice($1,$2,$3) as value",
+          [
+            subscription,
+            updatedAt,
+            JSON.stringify({
+              billing_date: "2030-01-01",
+              period_start: "2030-01-01",
+              period_end: "2030-02-01",
+              amount: 1969000,
+              policy_snapshot: policy,
+              next_billing_date: "2030-02-01",
+              next_attempt_at: "2030-01-01T00:00:00+09:00",
+            }),
+          ],
+        ),
+        true,
+      );
+      assert.equal(
+        Number(
+          await scalar(
+            "select amount as value from billing_invoices where subscription_id=$1 and period_start='2030-01-01'",
+            [subscription],
+          ),
+        ),
+        1969000,
+      );
+    },
+  );
 });

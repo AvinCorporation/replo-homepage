@@ -11,7 +11,7 @@
 이번 코드 검증과 실제 PG 연동 검증을 구분합니다. Toss Test 카드 등록·변경·승인·실패·취소, 실제 Supabase RLS/API, 별도 연결 간 동시 Worker 테스트는 후속 작업입니다. 이 검증 전 MVP 출시 완료로 판단하지 않습니다.
 
 1. Toss 자동결제 사용 가능한 계약/MID와 **자동결제용 Test Client/Secret Key**를 확인합니다.
-2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql`, `20260913154000_split_billing_failure_counters.sql`, `20260914010000_primary_backup_payment_methods.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
+2. 운영과 다른 개발 Supabase 프로젝트를 준비합니다. 기존 마이그레이션을 적용한 개발 스키마에 `20260913062551_toss_billing_mvp.sql`, `20260913132850_harden_toss_billing_workers.sql`, `20260913154000_split_billing_failure_counters.sql`, `20260914010000_primary_backup_payment_methods.sql`, `20260914020000_scheduled_plan_changes.sql` 순서로 적용합니다. 운영 DB에 먼저 실행하지 않습니다.
 3. 아래 환경변수를 Preview에 등록합니다. Secret을 Git/이슈/대화에 붙여넣지 않습니다.
 4. 개발 Auth User, Workspace, owner/admin/editor/viewer, 두 번째 Workspace를 준비합니다.
 5. 사업 정책과 기존 고객 전환 조건을 확인하고, 테스트 구독에 명시적으로 설정합니다.
@@ -22,13 +22,15 @@
 ## 현재 구현
 
 - 기존 Workspace membership 유지. 고객 API는 `getUser()`와 현재 membership/role을 검증합니다.
-- `/api/mypage/plan`의 고객 직접 플랜 변경 차단. 기존 subscriptions/payment_methods의 permissive ALL RLS와 고객 쓰기 권한 제거.
+- owner/admin이 마이페이지에서 라이트·베이직·프로 요금제 변경을 다음 달 1일로 예약할 수 있습니다. 엔터프라이즈는 별도 견적 문의로 연결합니다.
 - Invoice/Attempt/Consent/Credential/Registration/Cancellation/Profile 분리, 교차 Workspace 복합 FK, 청구기간·주문번호·멱등키 uniqueness.
 - Invoice 금액/기간/정책 및 Attempt 요청 identity의 DB 불변성.
 - AES-256-GCM, Workspace+카드 ID AAD, 키 버전 및 이전 키 복호화 지원. credential은 서비스 전용.
 - 1회·만료 state 해시, 등록 사용자·Workspace 고정, callback 권한 재검증, 주 카드 전환 단일 DB 트랜잭션.
 - 마이페이지 실제 구독·주 카드·백업 카드·예정금액·청구·실패·취소 조회 및 Toss SDK 카드 인증.
 - 활성 Toss 카드는 Workspace당 최대 2장입니다. 첫 카드는 주 카드, 두 번째 카드는 백업 카드로 저장되며 owner/admin이 주 카드를 바꿀 수 있습니다. Worker는 주 카드만 사용하고 백업 카드를 자동 대체 승인하지 않습니다. 기존 주 카드의 승인이 아직 확정되지 않았으면 결과가 반영될 때까지 전환을 차단합니다.
+- 요금제 카탈로그는 라이트 590,000원/200건, 베이직 990,000원/500건, 프로 1,790,000원/1,000건, 엔터프라이즈 2,000건 이상/별도 견적이며 모두 VAT 별도 기준입니다.
+- 요금제 변경 동의는 카드 등록 동의와 분리해 현재·변경 플랜, 기본 이용료, VAT, 총 청구액, 포함 문의량, 적용일을 고정 저장합니다. 카드가 아직 없거나 기존 자동결제 전환 확인 전이어도 변경 예약은 가능하지만, 실제 청구는 기존 등록·전환 안전조건을 모두 충족해야 합니다. 예약을 다시 하면 이전 예약은 취소되고 최신 예약 한 건만 남습니다.
 - 생성/승인/복구 Worker 분리. Invoice generation cursor와 결제 성공 시 다음 결제일 분리. Invoice별 오류를 격리해 한 건의 credential/DB 오류가 같은 배치의 다음 청구를 막지 않습니다.
 - 승인 전 Workspace 중지 및 DB 전체 중지 재검증. 영수증 및 부분/전체 취소 반영.
 - 별도 callback HTML 응답은 공통 analytics/Channel Talk 레이아웃을 사용하지 않습니다. query 즉시 제거, no-store, no-referrer, nonce CSP 적용.
@@ -75,7 +77,7 @@
 - 최초 결제: `contract_date` 또는 `registration`. 등록 완료 자체는 결제 성공이 아닙니다. 실제 승인은 다음 Worker에서 수행됩니다.
 - `billing_anchor_day`: 구독마다 명시, 코드 기본값 없음. 31일 → 2월 말일 → 3월 31일 유지.
 - 재시도 기준: `billing_date`(최초 청구일 한국시간 자정 기준) / `previous_failure`(직전 실패 시각 기준). 오프셋 배열은 명시적으로 설정. 이미 지나간 최초청구일 기준 재시도 창은 몰아서 처리하지 않고 수동 확인 대상으로 종료합니다.
-- 신규 Invoice 생성 시 마지막으로 완료된 카드 등록 동의의 정책/금액이 현재 구독과 일치해야 합니다. 금액·정책이 바뀌면 재동의(현재는 카드 등록/변경 흐름)가 필요합니다. 이미 생성된 미납 Invoice는 기존 동의 금액을 유지합니다.
+- 신규 Invoice 생성 시 마지막으로 완료된 카드 등록 동의 또는 실제 적용된 요금제 변경 동의가 현재 구독의 정책/금액과 일치해야 합니다. 이미 생성된 미납 Invoice는 이전 동의와 금액을 유지합니다.
 - 카드 변경 후 미납: 현재 지원 값은 `manual_approval`뿐입니다. 다른 정책은 확정 후 별도 구현해야 합니다. 카드 변경만으로 미납을 재결제하지 않습니다.
 - 서비스 운영: `past_due`로 Workspace/CS 운영을 자동 중단하지 않습니다.
 - 해지/마지막 청구/과거 미납: 운영 확인 후 별도 중지/승인 필드를 사용합니다. 자동 정책을 추정하지 않습니다.
@@ -103,6 +105,8 @@ Invoice 기간은 `[period_start, period_end)`입니다. 기존 과거 `next_bil
 등록/청구 테스트 중에는 직접 인증 호출합니다. **Cron 스케줄은 아직 활성화하지 않았습니다.** Vercel Cron은 `CRON_SECRET`을 보내므로 이를 사용할 때는 `BILLING_CRON_SECRET`과 같은 값으로 맞춰야 합니다. 실제 플랜이 300초 Route duration을 지원하는지 확인합니다.
 
 한 호출에서 복구와 외부 취소 확인을 합쳐 최대 2건, Invoice 생성 최대 50개 구독, 승인 최대 2건으로 제한합니다. Toss 요청은 각각 65초 타임아웃입니다. Provider 요청만 최악의 경우 약 260초이므로 `maxDuration=300`에서 DB 처리와 런타임 오버헤드 여유는 약 40초입니다. 대기 건이 많으면 인증된 scheduler 호출 빈도를 조정합니다.
+
+Cron은 복구 후 KST 기준 적용일이 지난 요금제 예약을 먼저 반영하고, 그 다음 Invoice를 생성합니다. 변경은 다음 달 1일에 구독에 적용되며 그 이후 새로 생성되는 Invoice부터 새 기본 이용료와 VAT 10%를 사용합니다. 이미 생성된 Invoice는 수정하지 않고 일할 계산도 하지 않습니다. 구독이 적용 전에 중지 또는 취소되면 예약도 취소 상태로 정리합니다.
 
 승인은 다음 세 조건이 모두 true일 때만 가능합니다.
 
@@ -150,6 +154,8 @@ DB 테스트는 PGlite(실제 PostgreSQL 엔진)와 기존 main의 최소 테이
 - [ ] timeout / 응답 손실 / 오래된 lease / NOT_FOUND 운영 복구
 - [ ] 외부 부분·전체 취소 반영 및 영수증 확인
 - [ ] 기존 납부기간 중복 청구 없음
+- [ ] 라이트·베이직·프로 변경 예약, 예약 교체, 다음 달 1일 적용 및 기존 Invoice 금액 보존
+- [ ] 엔터프라이즈 선택 시 자동 변경 없이 별도 견적 문의로 연결
 - [ ] Workspace pause / DB global kill switch / 환경변수 차단 테스트
 - [ ] 실제 Supabase/PostgREST에서 복구 조회의 두 `.or()` 필터가 AND로 적용되는지 확인
 - [ ] Preview가 개발 DB와 Test 키만 사용하는지 검증

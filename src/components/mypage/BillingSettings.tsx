@@ -68,6 +68,47 @@ type Conditions = {
   firstChargeDate: string | null;
   billingAnchorDay: number;
 };
+type PlanChangeConditions = {
+  termsVersion: string;
+  fromPlan: string | null;
+  planCode: string;
+  planName: string;
+  monthlyFee: number;
+  includedTickets: number;
+  vat: "excluded";
+  vatAmount: number;
+  totalAmount: number;
+  effectiveOn: string;
+};
+type PlanOption = {
+  code: string;
+  name: string;
+  monthlyFee: number | null;
+  includedTickets: number;
+  vat: "excluded";
+  selfService: boolean;
+  conditions: PlanChangeConditions | null;
+};
+type PlanData = {
+  canManage: boolean;
+  changeAvailable: boolean;
+  currentPlan: {
+    code: string | null;
+    monthlyFee: number | null;
+    includedTickets: number | null;
+  };
+  effectiveOn: string;
+  plans: PlanOption[];
+  pendingChange: {
+    id: string;
+    to_plan_code: string;
+    to_monthly_fee: number;
+    to_included_tickets: number;
+    effective_on: string;
+    status: "scheduled";
+    agreed_at: string;
+  } | null;
+};
 declare global {
   interface Window {
     TossPayments?: (key: string) => {
@@ -103,11 +144,24 @@ export function BillingSettings() {
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
+  const [planData, setPlanData] = useState<PlanData | null>(null);
+  const [planPanelOpen, setPlanPanelOpen] = useState(false);
+  const [selectedPlanCode, setSelectedPlanCode] = useState("");
+  const [planAgreed, setPlanAgreed] = useState(false);
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planMessage, setPlanMessage] = useState("");
   const loadSummary = useCallback(async () => {
     const response = await fetch("/api/billing/summary", { cache: "no-store" });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error);
     setData(result);
+  }, []);
+  const loadPlans = useCallback(async () => {
+    const response = await fetch("/api/mypage/plan", { cache: "no-store" });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    setPlanData(result);
+    return result as PlanData;
   }, []);
   useEffect(() => {
     let mounted = true;
@@ -117,10 +171,64 @@ export function BillingSettings() {
           "결제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
         );
     });
+    loadPlans().catch(() => undefined);
     return () => {
       mounted = false;
     };
-  }, [loadSummary]);
+  }, [loadPlans, loadSummary]);
+  async function showPlanChange() {
+    setPlanPanelOpen(true);
+    setPlanBusy(true);
+    setPlanAgreed(false);
+    setPlanMessage("");
+    setError("");
+    try {
+      await loadPlans();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "요금제 정보를 불러오지 못했습니다.",
+      );
+    } finally {
+      setPlanBusy(false);
+    }
+  }
+  async function schedulePlanChange() {
+    const selected = planData?.plans.find(
+      (plan) => plan.code === selectedPlanCode,
+    );
+    if (!selected?.conditions || !planAgreed) return;
+    setPlanBusy(true);
+    setPlanMessage("");
+    setError("");
+    try {
+      const response = await fetch("/api/mypage/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agreed: true,
+          planCode: selected.code,
+          conditions: selected.conditions,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "요금제 변경을 예약하지 못했습니다.",
+        );
+      setPlanMessage(result.message);
+      setPlanAgreed(false);
+      setSelectedPlanCode("");
+      await loadPlans();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "요금제 변경을 예약하지 못했습니다.",
+      );
+    } finally {
+      setPlanBusy(false);
+    }
+  }
   async function showConditions() {
     setBusy(true);
     setError("");
@@ -208,6 +316,13 @@ export function BillingSettings() {
           parsePolicy(s.billing_policy).vat,
         );
     } catch {}
+  const selectedPlan = planData?.plans.find(
+    (plan) => plan.code === selectedPlanCode,
+  );
+  const currentPlanCode = s?.plan_name === "Starter" ? "Lite" : s?.plan_name;
+  const currentPlanLabel =
+    planData?.plans.find((plan) => plan.code === currentPlanCode)?.name ??
+    s?.plan_name;
   return (
     <div className="billing-settings">
       {data?.canManage && (
@@ -226,12 +341,24 @@ export function BillingSettings() {
       {data && (
         <>
           <section className="mypage-card">
-            <h2>이용 플랜</h2>
+            <div className="billing-section-head">
+              <h2>이용 플랜</h2>
+              {data.canManage && s ? (
+                <button
+                  type="button"
+                  className="billing-secondary"
+                  onClick={showPlanChange}
+                  disabled={planBusy}
+                >
+                  요금제 변경
+                </button>
+              ) : null}
+            </div>
             {s ? (
               <div className="current-plan-summary">
                 <div>
                   <span>현재 플랜</span>
-                  <strong>{s.plan_name}</strong>
+                  <strong>{currentPlanLabel}</strong>
                 </div>
                 <div>
                   <span>
@@ -258,6 +385,149 @@ export function BillingSettings() {
             ) : (
               <p>확정된 이용 플랜이 없습니다. 담당자에게 문의해 주세요.</p>
             )}
+            {planData?.pendingChange ? (
+              <p className="billing-plan-pending" role="status">
+                <strong>
+                  {planData.plans.find(
+                    (plan) => plan.code === planData.pendingChange?.to_plan_code,
+                  )?.name ?? planData.pendingChange.to_plan_code}
+                </strong>{" "}
+                요금제로
+                변경 예약됨 · {planData.pendingChange.effective_on}부터 적용
+              </p>
+            ) : null}
+            {planMessage ? (
+              <p className="mypage-message success" role="status">
+                {planMessage}
+              </p>
+            ) : null}
+            {s && !data.canManage ? (
+              <p className="billing-action-notice">
+                요금제 변경은 소유자 또는 관리자에게 요청해 주세요.{" "}
+                <a href="/mypage?section=members">멤버 확인</a>
+              </p>
+            ) : null}
+            {planPanelOpen ? (
+              <div className="billing-plan-change">
+                <div className="billing-consent-head">
+                  <div>
+                    <h3>변경할 요금제 선택</h3>
+                    <p>
+                      선택한 요금제는 다음 달 1일부터 적용됩니다. 요금제 변경
+                      동의는 카드 등록과 별도로 저장됩니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="billing-close"
+                    onClick={() => {
+                      setPlanPanelOpen(false);
+                      setSelectedPlanCode("");
+                      setPlanAgreed(false);
+                    }}
+                    disabled={planBusy}
+                  >
+                    닫기
+                  </button>
+                </div>
+                {!planData && planBusy ? (
+                  <div className="billing-plan-loading" role="status">
+                    요금제를 불러오는 중입니다.
+                  </div>
+                ) : (
+                  <div className="billing-plan-grid">
+                    {planData?.plans.map((plan) => {
+                      const current = plan.code === currentPlanCode;
+                      const pending =
+                        plan.code === planData.pendingChange?.to_plan_code;
+                      const selected = plan.code === selectedPlanCode;
+                      if (!plan.selfService)
+                        return (
+                          <article className="billing-plan-option enterprise" key={plan.code}>
+                            <span>별도 협의</span>
+                            <strong>{plan.name}</strong>
+                            <b>맞춤 견적</b>
+                            <small>
+                              월 상담 {plan.includedTickets.toLocaleString()}건 이상
+                            </small>
+                            <a href="/contact">담당자와 상담</a>
+                          </article>
+                        );
+                      return (
+                        <button
+                          type="button"
+                          key={plan.code}
+                          className={`billing-plan-option${selected ? " selected" : ""}`}
+                          onClick={() => {
+                            setSelectedPlanCode(plan.code);
+                            setPlanAgreed(false);
+                          }}
+                          disabled={current || pending || planBusy}
+                          aria-pressed={selected}
+                        >
+                          <span>
+                            {current
+                              ? "현재 이용 중"
+                              : pending
+                                ? "변경 예약됨"
+                                : "선택"}
+                          </span>
+                          <strong>{plan.name}</strong>
+                          <b>{won(plan.monthlyFee)}</b>
+                          <small>
+                            VAT 별도 · 월 상담{" "}
+                            {plan.includedTickets.toLocaleString()}건
+                          </small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {selectedPlan?.conditions ? (
+                  <div className="billing-plan-consent">
+                    <h4>{selectedPlan.name} 요금제 변경 조건</h4>
+                    <dl>
+                      <div>
+                        <dt>월 기본 이용료</dt>
+                        <dd>{won(selectedPlan.conditions.monthlyFee)}</dd>
+                      </div>
+                      <div>
+                        <dt>VAT 10%</dt>
+                        <dd>{won(selectedPlan.conditions.vatAmount)}</dd>
+                      </div>
+                      <div>
+                        <dt>월 청구액</dt>
+                        <dd>{won(selectedPlan.conditions.totalAmount)}</dd>
+                      </div>
+                      <div>
+                        <dt>적용일</dt>
+                        <dd>{selectedPlan.conditions.effectiveOn}</dd>
+                      </div>
+                    </dl>
+                    <p>
+                      적용일부터 새로 생성되는 청구에 변경 요금이 반영됩니다.
+                      이미 생성된 청구서는 변경되지 않으며 일할 계산은 하지 않습니다.
+                    </p>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={planAgreed}
+                        onChange={(event) => setPlanAgreed(event.target.checked)}
+                      />{" "}
+                      위 요금제, 월 청구액, 적용일을 확인했으며 변경에 동의합니다.
+                    </label>
+                    <button
+                      type="button"
+                      className="billing-primary"
+                      onClick={schedulePlanChange}
+                      disabled={!planAgreed || planBusy}
+                    >
+                      {planBusy ? "예약 중…" : "다음 달 1일 변경 예약"}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
           <section className="mypage-card">
             <h2>다음 결제</h2>

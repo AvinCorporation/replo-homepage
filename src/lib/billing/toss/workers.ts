@@ -17,6 +17,10 @@ import {
   type WorkerAttempt as Attempt,
 } from "./workerOrchestrator";
 
+export async function applyPlanChanges() {
+  return rpc<number>("billing_apply_due_plan_changes", { p_limit: 50 });
+}
+
 export async function generateInvoices() {
   const admin = billingAdmin();
   const today = seoulToday();

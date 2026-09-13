@@ -9,9 +9,9 @@ test("billing callback stays isolated, branded and returns to the plan tab", asy
   const nonce = csp.match(/script-src 'nonce-([^']+)'/)?.[1];
 
   assert.ok(nonce);
-  assert.match(csp, new RegExp(`style-src 'nonce-${nonce}'`));
-  assert.match(html, new RegExp(`<style nonce="${nonce}">`));
-  assert.match(html, new RegExp(`<script nonce="${nonce}">`));
+  assert.ok(csp.includes(`style-src 'nonce-${nonce}'`));
+  assert.ok(html.includes(`<style nonce="${nonce}">`));
+  assert.ok(html.includes(`<script nonce="${nonce}">`));
   assert.doesNotMatch(html, /<script[^>]+src=/);
   assert.match(html, /d\.error/);
   assert.match(html, /location\.replace\('\/mypage\?section=plan'\)/);

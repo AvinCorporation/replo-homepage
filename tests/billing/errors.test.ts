@@ -26,6 +26,13 @@ test("expected customer actions use conflict or validation responses", () => {
     409,
   );
   assert.equal(billingErrorDetails("BILLING_PAYMENT_IN_PROGRESS").status, 409);
+  assert.equal(
+    billingErrorDetails("BILLING_PLAN_CHANGE_UNAVAILABLE").status,
+    409,
+  );
+  assert.equal(billingErrorDetails("BILLING_PLAN_REQUIRES_QUOTE").status, 409);
+  assert.equal(billingErrorDetails("BILLING_PLAN_CONSENT_CHANGED").status, 409);
+  assert.equal(billingErrorDetails("BILLING_PLAN_ALREADY_ACTIVE").status, 409);
 });
 
 test("unknown internal errors keep a generic 503 surface", () => {
@@ -49,6 +56,10 @@ test("RPC errors are classified by exact SQLSTATE", () => {
     "BILLING_PAYMENT_METHOD_NOT_AVAILABLE",
   );
   assert.equal(billingRpcErrorCode("RB423"), "BILLING_PAYMENT_IN_PROGRESS");
+  assert.equal(billingRpcErrorCode("RB424"), "BILLING_PLAN_CHANGE_UNAVAILABLE");
+  assert.equal(billingRpcErrorCode("RB425"), "BILLING_PLAN_REQUIRES_QUOTE");
+  assert.equal(billingRpcErrorCode("RB426"), "BILLING_PLAN_CONSENT_CHANGED");
+  assert.equal(billingRpcErrorCode("RB427"), "BILLING_PLAN_ALREADY_ACTIVE");
   assert.equal(billingRpcErrorCode("23505"), null);
   assert.equal(billingRpcErrorCode(undefined), null);
 });
