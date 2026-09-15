@@ -37,7 +37,7 @@ const menus: Array<{ id: Section; label: string; description: string }> = [
 
 const sectionTitles: Record<Section, [string, string]> = {
   profile: ["고객 정보", "고객사와 브랜드의 기본 정보를 관리합니다."],
-  plan: ["이용 플랜", "이용 조건과 결제수단, 청구 내역을 확인합니다."],
+  plan: ["이용 플랜", "이용 중인 플랜과 결제 정보를 확인할 수 있어요."],
   members: ["멤버 관리", "워크스페이스 구성원과 역할을 관리합니다."],
 };
 

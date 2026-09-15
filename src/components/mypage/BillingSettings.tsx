@@ -130,7 +130,7 @@ const planNames: Record<string, string> = {
   Basic: "베이직",
   Pro: "프로",
   Enterprise: "엔터프라이즈",
-  Free: "Free",
+  Free: "무료 플랜",
 };
 const dateLabel = (value: string) =>
   new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR", {
@@ -145,7 +145,7 @@ const usageEndDate = (exclusiveEnd: string) => {
 const statuses: Record<string, string> = {
   active: "이용 중",
   past_due: "미납 확인 필요",
-  paused: "청구 중지",
+  paused: "결제 일시중지",
   canceled: "취소",
   pending_payment_method: "카드 등록 필요",
   scheduled: "결제 예정",
@@ -367,7 +367,7 @@ export function BillingSettings() {
   const currentPlanCode = s?.plan_name === "Starter" ? "Lite" : s?.plan_name;
   const currentPlanLabel =
     planData?.plans.find((plan) => plan.code === currentPlanCode)?.name ??
-    (s?.plan_name ? (planNames[s.plan_name] ?? s.plan_name) : "Free");
+    (s?.plan_name ? (planNames[s.plan_name] ?? s.plan_name) : "무료 플랜");
   return (
     <div className="billing-settings">
       {data?.canManage && shouldLoadSdk ? (
@@ -459,7 +459,7 @@ export function BillingSettings() {
               </div>
             {isFreePlan ? (
               <p className="billing-action-notice">
-                현재 유료 요금제를 이용하고 있지 않아 Free 플랜이 적용되어 있어요.
+                현재는 무료 플랜을 이용하고 있어요.
               </p>
             ) : null}
             {planData?.pendingChange ? (
@@ -640,7 +640,7 @@ export function BillingSettings() {
             </div>
           </section>
           <section className="mypage-card">
-            <h2>결제수단</h2>
+            <h2>결제 수단</h2>
             {data.paymentMethods.length ? (
               <div className="billing-card-list">
                 {data.paymentMethods.map((method) => (
@@ -664,7 +664,7 @@ export function BillingSettings() {
                       >
                         {switchingId === method.id
                           ? "변경 중…"
-                          : "주 결제수단으로 변경"}
+                          : "이 카드를 주 카드로 사용"}
                       </button>
                     ) : null}
                   </article>
@@ -748,11 +748,11 @@ export function BillingSettings() {
                 </p>
                 <p>
                   {data.paymentMethods.length === 0
-                    ? "등록한 첫 카드는 주 결제수단이 됩니다."
+                    ? "처음 등록한 카드를 결제용 주 카드로 사용할게요."
                     : "새 카드는 백업으로 저장되며 기존 주 카드는 유지됩니다. 등록에 실패해도 기존 카드는 바뀌지 않습니다."}{" "}
                   이전에 결제되지 않은 금액은 확인 없이 다시 결제하지 않아요.
                 </p>
-                <p>해지 요청: {conditions.policy.cancellationInstructions}</p>
+                <p>자동결제 해지 문의: {conditions.policy.cancellationInstructions}</p>
                 <label>
                   <input
                     type="checkbox"
@@ -770,7 +770,7 @@ export function BillingSettings() {
                     ? "처리 중…"
                     : !sdkReady
                       ? "결제 모듈 불러오는 중…"
-                      : "동의하고 카드 인증"}
+                      : "동의하고 카드 등록"}
                 </button>
               </div>
             )}
@@ -788,7 +788,7 @@ export function BillingSettings() {
               <div
                 className="billing-table-scroll"
                 tabIndex={0}
-                aria-label="청구 및 결제내역 표. 좁은 화면에서는 좌우로 스크롤할 수 있습니다."
+                aria-label="결제 내역"
               >
                 <table>
                   <thead>
@@ -816,7 +816,7 @@ export function BillingSettings() {
                             </small>
                             {a?.approved_at && (
                               <small>
-                                승인:{" "}
+                                결제 완료:{" "}
                                 {new Date(a.approved_at).toLocaleString(
                                   "ko-KR",
                                   { timeZone: "Asia/Seoul" },
