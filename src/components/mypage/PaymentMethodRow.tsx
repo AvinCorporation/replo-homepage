@@ -62,11 +62,15 @@ export function PaymentMethodRow(props: Props) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const method = props.paymentMethod;
-  const configured = Boolean(props.clientKey);
 
   // 카드 번호는 토스 인증창에서만 입력받습니다. 이 화면은 창을 열어줄 뿐입니다.
   async function openCardWindow() {
     setError("");
+    // 키가 없으면 인증창이 뜨지 않습니다. 눌렀을 때 이유를 알려 줍니다.
+    if (!props.clientKey) {
+      setError("결제 연동 키가 설정되지 않았습니다. 관리자에게 문의해 주세요.");
+      return;
+    }
     setPending(true);
     try {
       await loadTossSdk();
@@ -112,18 +116,12 @@ export function PaymentMethodRow(props: Props) {
         ) : method ? (
           <small>{cardLabel(method)}{method.cardType ? ` · ${method.cardType}` : ""}</small>
         ) : (
-          <small>
-            {configured
-              ? "카드를 등록하면 플랜 시작일에 자동으로 결제됩니다."
-              : "결제 연동 준비 중입니다. 잠시 후 다시 확인해 주세요."}
-          </small>
+          <small>카드를 등록하면 플랜 시작일에 자동으로 결제됩니다.</small>
         )}
       </div>
 
       {!props.canManage ? (
         <span className="pill-disabled">owner · admin만 변경</span>
-      ) : !configured ? (
-        <span className="pill-disabled">준비 중</span>
       ) : method ? (
         <div className="row-actions">
           <button type="button" className="button-secondary" onClick={openCardWindow} disabled={pending}>
