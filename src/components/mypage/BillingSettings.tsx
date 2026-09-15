@@ -35,7 +35,7 @@ type PaymentMethod = {
   is_default: boolean;
   registered_at: string | null;
 };
-export type Summary = {
+type Summary = {
   canManage: boolean;
   subscription: {
     plan_name: string;
@@ -154,8 +154,8 @@ const statuses: Record<string, string> = {
   paid: "결제 완료",
   failed: "결제 실패",
 };
-export function BillingSettings({ initialData = null }: { initialData?: Summary | null }) {
-  const [data, setData] = useState<Summary | null>(initialData);
+export function BillingSettings() {
+  const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState("");
   const [conditions, setConditions] = useState<Conditions | null>(null);
   const [agreed, setAgreed] = useState(false);
@@ -184,8 +184,7 @@ export function BillingSettings({ initialData = null }: { initialData?: Summary 
   }, []);
   useEffect(() => {
     let mounted = true;
-    const summary = initialData ? Promise.resolve() : loadSummary();
-    summary
+    loadSummary()
       .then(() => {
         if (mounted) loadPlans().catch(() => undefined);
       })
@@ -198,7 +197,7 @@ export function BillingSettings({ initialData = null }: { initialData?: Summary 
     return () => {
       mounted = false;
     };
-  }, [initialData, loadPlans, loadSummary]);
+  }, [loadPlans, loadSummary]);
   async function showPlanChange() {
     setPlanPanelOpen(true);
     setPlanBusy(true);

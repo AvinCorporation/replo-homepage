@@ -3,7 +3,6 @@ import { MypageSettings } from "@/components/mypage/MypageSettings";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
 import { createClient } from "@/lib/supabase/server";
-import { loadBillingSummary } from "@/lib/billing/toss/summary";
 import "./mypage.css";
 
 export const dynamic = "force-dynamic";
@@ -29,35 +28,25 @@ export default async function MyPage({
   if (!loginEmail) redirect("/login");
 
   const supabase = await createClient();
-  const initialSection =
-    searchParams?.section === "plan" || searchParams?.section === "members"
-      ? searchParams.section
-      : "profile";
-  const canManage =
-    access.membership.role === "owner" || access.membership.role === "admin";
 
-  const [brandResult, initialBillingData] = await Promise.all([
-    supabase
-      .from("brands")
-      .select("name")
-      .eq("workspace_id", access.workspace.id)
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-    initialSection === "plan"
-      ? loadBillingSummary(supabase, access.workspace.id, canManage).catch(
-          () => null,
-        )
-      : Promise.resolve(null),
-  ]);
+  const brandResult = await supabase
+    .from("brands")
+    .select("name")
+    .eq("workspace_id", access.workspace.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
   const customer = access.workspace;
 
   return (
     <MypageSettings
-      initialSection={initialSection}
-      initialBillingData={initialBillingData}
-      canManage={canManage}
+      initialSection={
+        searchParams?.section === "plan" || searchParams?.section === "members"
+          ? searchParams.section
+          : "profile"
+      }
+      canManage={access.membership.role === "owner" || access.membership.role === "admin"}
       loginEmail={loginEmail}
       roleLabel={roleLabels[access.membership.role] ?? access.membership.role}
       customer={{
