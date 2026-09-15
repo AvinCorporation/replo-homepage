@@ -108,8 +108,17 @@
 .button-secondary:hover { border-color: #94a3b8; color: var(--navy); }
 .button-ghost { min-height: 42px; border: 1px solid #d9d1ff; background: #fff; color: var(--purple); font-size: 13.5px; font-weight: 800; padding: 0 16px; }
 .button-ghost:hover { background: var(--purple-soft); color: var(--purple-dark); }
+.button-danger {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 40px;
+  border: 1px solid #f0d4d4; border-radius: 9px; background: #fff; color: #dc2626;
+  padding: 0 15px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.button-danger:hover:not(:disabled) { border-color: #dc2626; background: #fff7f7; }
+.button-primary.compact { min-height: 40px; border-radius: 9px; padding: 0 16px; font-size: 13px; }
+.button-primary:disabled, .button-secondary:disabled, .button-danger:disabled { opacity: .5; cursor: not-allowed; }
 .button-primary svg, .button-ghost svg { width: 16px; height: 16px; }
 .block { width: 100%; }
+.row-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 
 /* Chips */
 .chip {
@@ -163,6 +172,7 @@
 .info-rows.boxed > div { min-height: 66px; }
 .info-rows.boxed strong { display: block; font-size: 14.5px; font-weight: 700; }
 .info-rows.boxed small { display: block; margin-top: 4px; color: var(--muted); font-size: 13.5px; }
+.info-rows.boxed small.danger { color: #b91c1c; font-weight: 700; }
 .info-rows.boxed .button-secondary { min-height: 40px; flex: 0 0 auto; border-radius: 9px; padding: 0 15px; font-size: 13px; }
 .pill-disabled {
   flex: 0 0 auto; border: 1px solid var(--border); border-radius: 9px; background: #f1f3f5;

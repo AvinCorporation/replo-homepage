@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
+import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
 import { loadPlanOverview } from "@/lib/billing/planOverview";
+import { workspaceCustomerKey } from "@/lib/billing/toss";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
 import { createClient } from "@/lib/supabase/server";
@@ -22,10 +24,24 @@ function parseSection(value: string | string[] | undefined): MypageSection {
   return sections.find((section) => section === candidate) ?? "profile";
 }
 
+// 토스 카드 등록 창에서 돌아올 때 붙는 ?card= 결과값.
+const cardNotices: Record<string, { tone: "success" | "error"; text: string }> = {
+  registered: { tone: "success", text: "카드를 등록했습니다." },
+  cancelled: { tone: "error", text: "카드 등록을 취소했습니다." },
+  failed: { tone: "error", text: "카드를 등록하지 못했습니다. 카드사 인증을 다시 시도해 주세요." },
+  forbidden: { tone: "error", text: "결제 수단을 변경할 권한이 없습니다." },
+  unavailable: { tone: "error", text: "결제 연동이 아직 설정되지 않았습니다." },
+};
+
+function parseCardNotice(value: string | string[] | undefined) {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return (candidate && cardNotices[candidate]) || null;
+}
+
 export default async function MyPage({
   searchParams,
 }: {
-  searchParams?: { section?: string | string[] };
+  searchParams?: { section?: string | string[]; card?: string | string[] };
 }) {
   const claims = await getSessionClaims();
   if (!claims) redirect("/login");
@@ -37,7 +53,7 @@ export default async function MyPage({
 
   const supabase = await createClient();
 
-  const [brandResult, planOverview] = await Promise.all([
+  const [brandResult, planOverview, paymentMethod] = await Promise.all([
     supabase
       .from("brands")
       .select("name")
@@ -46,6 +62,7 @@ export default async function MyPage({
       .limit(1)
       .maybeSingle(),
     loadPlanOverview(access.workspace.id),
+    loadPaymentMethod(access.workspace.id),
   ]);
 
   const customer = access.workspace;
@@ -72,6 +89,19 @@ export default async function MyPage({
       usage={planOverview.usage}
       startedAt={planOverview.startedAt}
       memberCount={planOverview.memberCount}
+      paymentMethod={
+        paymentMethod
+          ? {
+              cardCompany: paymentMethod.cardCompany,
+              maskedNumber: paymentMethod.maskedNumber,
+              cardType: paymentMethod.cardType,
+              registeredAt: paymentMethod.registeredAt,
+            }
+          : null
+      }
+      tossClientKey={process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY ?? ""}
+      customerKey={workspaceCustomerKey(access.workspace.id)}
+      cardNotice={parseCardNotice(searchParams?.card)}
     />
   );
 }

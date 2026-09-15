@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, ReactNode, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MemberManagement } from "@/components/mypage/MemberManagement";
+import {
+  PaymentMethodRow,
+  cardLabel,
+  type PaymentMethodView,
+} from "@/components/mypage/PaymentMethodRow";
 import { PortalRail } from "@/components/portal/PortalRail";
 import { selectablePlans, type SelectablePlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/client";
@@ -39,6 +44,10 @@ type Props = {
   usage: PlanUsage;
   startedAt: string | null;
   memberCount: number;
+  paymentMethod: PaymentMethodView | null;
+  tossClientKey: string;
+  customerKey: string;
+  cardNotice: { tone: "success" | "error"; text: string } | null;
 };
 
 const sectionTitles: Record<MypageSection, [string, string]> = {
@@ -155,9 +164,19 @@ export function MypageSettings(props: Props) {
   const router = useRouter();
   const [active, setActive] = useState<MypageSection>(props.initialSection);
   const [profile, setProfile] = useState(props.customer);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [message, setMessage] = useState(
+    props.cardNotice?.tone === "success" ? props.cardNotice.text : "",
+  );
+  const [error, setError] = useState(
+    props.cardNotice?.tone === "error" ? props.cardNotice.text : "",
+  );
   const [saving, setSaving] = useState(false);
+
+  // 카드 등록 결과는 한 번만 보여 주고 주소에서 지웁니다.
+  useEffect(() => {
+    if (!props.cardNotice || typeof window === "undefined") return;
+    window.history.replaceState(window.history.state, "", `/mypage?section=${props.initialSection}`);
+  }, [props.cardNotice, props.initialSection]);
 
   const title = sectionTitles[active];
   const usage = props.usage;
@@ -327,13 +346,12 @@ export function MypageSettings(props: Props) {
             <section className="mypage-card plan-hero">
               <div className="plan-hero-main">
                 <div className="plan-chips">
-                  <span className="chip chip-purple">선공개 기간</span>
                   <span className="chip chip-status"><i />이용 중</span>
                 </div>
                 <h2>Free 플랜</h2>
                 <p>
-                  정식 오픈 전까지 상담 응대와 리포트를 제한 없이 이용합니다. 결제 정보는 아직
-                  필요하지 않으며, 오픈 시점에 사용량에 맞는 플랜을 안내드립니다.
+                  지금은 Free 플랜으로 상담 응대와 리포트를 이용하고 있습니다. 카드를 등록해 두면
+                  플랜을 시작하는 날부터 자동으로 결제됩니다.
                 </p>
                 <div className="plan-hero-actions">
                   <Link href="/contact" className="button-primary">
@@ -358,7 +376,9 @@ export function MypageSettings(props: Props) {
                 </div>
                 <div>
                   <dt>결제 수단</dt>
-                  <dd className="muted">미등록 · 정식 오픈 후 안내</dd>
+                  <dd className={props.paymentMethod ? "" : "muted"}>
+                    {props.paymentMethod ? cardLabel(props.paymentMethod) : "미등록"}
+                  </dd>
                 </div>
               </dl>
             </section>
@@ -432,7 +452,7 @@ export function MypageSettings(props: Props) {
             <section className="mypage-card" id="plan-ladder">
               <div className="mypage-card-head">
                 <div>
-                  <h2>정식 오픈 후 플랜</h2>
+                  <h2>플랜</h2>
                   <p>상담량이 늘어나면 언제든 상위 플랜으로 확장할 수 있습니다.</p>
                 </div>
               </div>
@@ -480,7 +500,7 @@ export function MypageSettings(props: Props) {
               <div className="mypage-card-head">
                 <div>
                   <h2>결제 · 청구 정보</h2>
-                  <p>정식 플랜 시작 시 사용할 청구 정보입니다. 카드 정보는 결제 대행사 화면에서만 입력합니다.</p>
+                  <p>청구서 발송과 자동 결제에 사용합니다. 카드 번호는 토스페이먼츠 인증창에서만 입력하며, 이 화면에는 저장되지 않습니다.</p>
                 </div>
               </div>
               <div className="info-rows boxed">
@@ -502,13 +522,12 @@ export function MypageSettings(props: Props) {
                     수정
                   </button>
                 </div>
-                <div>
-                  <div>
-                    <strong>결제 수단</strong>
-                    <small>선공개 기간에는 등록하지 않아도 됩니다.</small>
-                  </div>
-                  <span className="pill-disabled">정식 오픈 후 등록</span>
-                </div>
+                <PaymentMethodRow
+                  paymentMethod={props.paymentMethod}
+                  canManage={props.canManage}
+                  clientKey={props.tossClientKey}
+                  customerKey={props.customerKey}
+                />
               </div>
             </section>
 
