@@ -38,6 +38,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     "20260913154000_split_billing_failure_counters.sql",
     "20260914010000_primary_backup_payment_methods.sql",
     "20260914020000_scheduled_plan_changes.sql",
+    "20260915000000_decouple_plan_change_consent.sql",
   ])
     await db.exec(
       await readFile(
@@ -468,6 +469,10 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
         cancellationInstructions: "담당자 문의",
         retry: { basis: "billing_date", days: [1, 3, 5] },
       };
+      const planPolicy = {
+        termsVersion: "plan-change-v1",
+        vat: "excluded",
+      };
       await query(
         "update subscriptions set plan_name='Lite',monthly_fee=590000,included_tickets=200,billing_policy=$2,auto_charge_start_date='2026-09-01',first_period_start='2026-09-01',billing_anchor_day=1,enrollment_confirmed_at=null,updated_at=now() where id=$1",
         [subscription, JSON.stringify(policy)],
@@ -482,7 +487,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
         ),
       );
       const conditions = (code: string, name: string, fee: number, tickets: number) => ({
-        termsVersion: "v1",
+        termsVersion: "plan-change-v1",
         fromPlan: "Lite",
         planCode: code,
         planName: name,
@@ -525,8 +530,8 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
               user,
               effectiveOn,
               JSON.stringify({
-                ...policy,
-                retry: { basis: "billing_date", days: [99] },
+                ...planPolicy,
+                termsVersion: "changed",
               }),
               JSON.stringify(conditions("Basic", "베이직", 990000, 500)),
             ],
@@ -546,7 +551,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
           subscription,
           user,
           effectiveOn,
-          JSON.stringify(policy),
+          JSON.stringify(planPolicy),
           JSON.stringify(conditions("Basic", "베이직", 990000, 500)),
         ],
       );
@@ -575,7 +580,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
           subscription,
           user,
           effectiveOn,
-          JSON.stringify(policy),
+          JSON.stringify(planPolicy),
           JSON.stringify(conditions("Pro", "프로", 1790000, 1000)),
         ],
       );

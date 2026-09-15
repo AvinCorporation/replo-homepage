@@ -76,7 +76,7 @@ export async function GET() {
     const { subscription, catalog, pendingChange } = await loadPlanData(
       access.workspaceId,
     );
-    const policy = planChangePolicy(subscription.billing_policy);
+    const policy = planChangePolicy();
     const effectiveOn = nextPlanEffectiveOn();
     const currentPlan = normalizePlanName(subscription.plan_name);
 
@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     if (!plan || !plan.self_service || plan.monthly_fee === null)
       throw new Error("BILLING_PLAN_REQUIRES_QUOTE");
 
-    const policy = planChangePolicy(subscription.billing_policy);
+    const policy = planChangePolicy();
     const effectiveOn = nextPlanEffectiveOn();
     const conditions = planChangeConditions({
       fromPlan: subscription.plan_name,

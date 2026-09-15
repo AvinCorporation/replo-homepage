@@ -1,8 +1,4 @@
-import {
-  invoiceAmount,
-  parsePolicy,
-  type BillingPolicy,
-} from "./toss/domain.ts";
+import { invoiceAmount } from "./toss/domain.ts";
 
 export type PlanChangePlan = {
   code: string;
@@ -20,19 +16,17 @@ export function nextPlanEffectiveOn(now = new Date()): string {
     .slice(0, 10);
 }
 
-export function planChangePolicy(value: unknown): BillingPolicy {
-  const policy = parsePolicy(value);
+export function planChangePolicy() {
   return {
-    ...(value as Record<string, unknown>),
-    ...policy,
-    vat: "excluded",
+    termsVersion: "plan-change-v1",
+    vat: "excluded" as const,
   };
 }
 
 export function planChangeConditions(input: {
   fromPlan: string | null;
   plan: PlanChangePlan;
-  policy: BillingPolicy;
+  policy: ReturnType<typeof planChangePolicy>;
   effectiveOn: string;
 }) {
   const totalAmount = invoiceAmount(input.plan.monthlyFee, "excluded");

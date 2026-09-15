@@ -3,18 +3,8 @@ import assert from "node:assert/strict";
 import {
   nextPlanEffectiveOn,
   planChangeConditions,
+  planChangePolicy,
 } from "../../src/lib/billing/planChanges.ts";
-import { parsePolicy } from "../../src/lib/billing/toss/domain.ts";
-
-const policy = parsePolicy({
-  version: "v1",
-  termsVersion: "terms-v1",
-  vat: "included",
-  firstCharge: "contract_date",
-  cardChangeArrears: "manual_approval",
-  cancellationInstructions: "담당자 문의",
-  retry: { basis: "billing_date", days: [1, 3, 5] },
-});
 
 test("next plan date follows the KST calendar month boundary", () => {
   assert.equal(
@@ -41,11 +31,11 @@ test("plan consent includes VAT excluded totals and the effective date", () => {
         monthlyFee: 990000,
         includedTickets: 500,
       },
-      policy: { ...policy, vat: "excluded" },
+      policy: planChangePolicy(),
       effectiveOn: "2026-10-01",
     }),
     {
-      termsVersion: "terms-v1",
+      termsVersion: "plan-change-v1",
       fromPlan: "Lite",
       planCode: "Basic",
       planName: "베이직",
