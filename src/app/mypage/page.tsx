@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
-import { MypageSettings } from "@/components/mypage/MypageSettings";
+import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
+import { loadPlanOverview } from "@/lib/billing/planOverview";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
 import { createClient } from "@/lib/supabase/server";
@@ -14,7 +15,18 @@ const roleLabels: Record<string, string> = {
   viewer: "뷰어",
 };
 
-export default async function MyPage() {
+const sections: MypageSection[] = ["profile", "plan", "members"];
+
+function parseSection(value: string | string[] | undefined): MypageSection {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return sections.find((section) => section === candidate) ?? "profile";
+}
+
+export default async function MyPage({
+  searchParams,
+}: {
+  searchParams?: { section?: string | string[] };
+}) {
   const claims = await getSessionClaims();
   if (!claims) redirect("/login");
 
@@ -25,19 +37,23 @@ export default async function MyPage() {
 
   const supabase = await createClient();
 
-  const brandResult = await supabase
-    .from("brands")
-    .select("name")
-    .eq("workspace_id", access.workspace.id)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const [brandResult, planOverview] = await Promise.all([
+    supabase
+      .from("brands")
+      .select("name")
+      .eq("workspace_id", access.workspace.id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    loadPlanOverview(access.workspace.id),
+  ]);
 
   const customer = access.workspace;
 
   return (
     <MypageSettings
       canManage={access.membership.role === "owner" || access.membership.role === "admin"}
+      initialSection={parseSection(searchParams?.section)}
       loginEmail={loginEmail}
       roleLabel={roleLabels[access.membership.role] ?? access.membership.role}
       customer={{
@@ -53,15 +69,9 @@ export default async function MyPage() {
         businessNumber: customer.business_number ?? "",
         billingEmail: customer.billing_email ?? "",
       }}
-      subscription={
-        {
-          planName: "Free",
-          monthlyFee: 0,
-          includedTickets: 0,
-          nextBillingDate: "",
-        }
-      }
-      paymentMethod={null}
+      usage={planOverview.usage}
+      startedAt={planOverview.startedAt}
+      memberCount={planOverview.memberCount}
     />
   );
 }
