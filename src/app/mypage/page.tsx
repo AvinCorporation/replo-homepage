@@ -87,6 +87,7 @@ export default async function MyPage({
         billingEmail: customer.billing_email ?? "",
       }}
       usage={planOverview.usage}
+      plan={planOverview.plan}
       startedAt={planOverview.startedAt}
       memberCount={planOverview.memberCount}
       paymentMethod={

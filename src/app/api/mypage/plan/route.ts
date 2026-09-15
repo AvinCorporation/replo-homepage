@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { findSelectablePlan } from "@/lib/billing/plans";
+import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
+import { findSelectablePlan, planLabels } from "@/lib/billing/plans";
 import { canManageWorkspace, getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -14,6 +15,17 @@ export async function PATCH(request: Request) {
   const plan = findSelectablePlan(body.planId);
   if (!plan) {
     return NextResponse.json({ error: "선택할 수 없는 플랜입니다." }, { status: 400 });
+  }
+
+  // 유료 플랜은 등록된 카드가 있어야 결제가 가능합니다.
+  if (plan.monthlyFee > 0) {
+    const paymentMethod = await loadPaymentMethod(access.workspace.id);
+    if (!paymentMethod) {
+      return NextResponse.json(
+        { error: "결제 수단을 먼저 등록해 주세요." },
+        { status: 400 },
+      );
+    }
   }
 
   const admin = createAdminClient();
@@ -59,7 +71,7 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    message: `${plan.label} 플랜을 등록했습니다.`,
+    message: `${planLabels[plan.id]} 플랜으로 변경했습니다.`,
     plan,
   });
 }

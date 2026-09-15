@@ -1,6 +1,11 @@
 import "server-only";
 import { calendarMonthRange } from "@/lib/dashboard/dates";
-import { selectablePlans, type SelectablePlanId } from "@/lib/billing/plans";
+import {
+  findSelectablePlan,
+  planLabels,
+  selectablePlans,
+  type SelectablePlanId,
+} from "@/lib/billing/plans";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PlanUsage = {
@@ -13,10 +18,30 @@ export type PlanUsage = {
   hasData: boolean;
 };
 
+// 구독 행이 없거나 알 수 없는 plan_name이면 Free로 봅니다.
+export type CurrentPlan = {
+  planId: SelectablePlanId | null;
+  label: string;
+  monthlyFee: number;
+  includedTickets: number;
+  nextBillingDate: string | null;
+  status: string;
+};
+
 export type PlanOverview = {
   usage: PlanUsage;
+  plan: CurrentPlan;
   startedAt: string | null;
   memberCount: number;
+};
+
+const freePlan: CurrentPlan = {
+  planId: null,
+  label: "Free",
+  monthlyFee: 0,
+  includedTickets: 0,
+  nextBillingDate: null,
+  status: "active",
 };
 
 function daysInMonth(dateKey: string) {
@@ -57,7 +82,7 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
   const startedAt = (workspaceResult.data?.created_at as string | null) ?? null;
   const { start, end } = calendarMonthRange(timezone);
 
-  const [metricsResult, memberResult] = await Promise.all([
+  const [metricsResult, memberResult, subscriptionResult] = await Promise.all([
     admin
       .from("daily_operation_metrics")
       .select("total_count, billable_count")
@@ -69,11 +94,20 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
       .select("id", { count: "exact", head: true })
       .eq("workspace_id", workspaceId)
       .eq("status", "active"),
+    admin
+      .from("subscriptions")
+      .select("plan_name, monthly_fee, included_tickets, next_billing_date, status")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const memberCount = memberResult.count ?? 0;
+  const plan = toCurrentPlan(subscriptionResult.data as Record<string, unknown> | null);
+
   if (metricsResult.error || !metricsResult.data?.length) {
-    return { usage: emptyUsage(start, end), startedAt, memberCount };
+    return { usage: emptyUsage(start, end), plan, startedAt, memberCount };
   }
 
   const rows = metricsResult.data as Array<{
@@ -95,7 +129,24 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
       recommendedPlanId: recommendPlan(projectedBillableCount),
       hasData: handledCount > 0,
     },
+    plan,
     startedAt,
     memberCount,
+  };
+}
+
+function toCurrentPlan(row: Record<string, unknown> | null): CurrentPlan {
+  if (!row) return freePlan;
+  const status = (row.status as string | null) ?? "active";
+  const plan = findSelectablePlan(row.plan_name);
+  if (!plan || status === "canceled") return freePlan;
+
+  return {
+    planId: plan.id,
+    label: planLabels[plan.id],
+    monthlyFee: Number(row.monthly_fee ?? plan.monthlyFee),
+    includedTickets: Number(row.included_tickets ?? plan.includedTickets),
+    nextBillingDate: (row.next_billing_date as string | null) ?? null,
+    status,
   };
 }

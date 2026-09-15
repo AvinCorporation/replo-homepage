@@ -217,6 +217,12 @@
   border-radius: 16px; background: #fff; padding: 20px;
 }
 .plan-tier.recommended { border-color: var(--purple); box-shadow: 0 6px 18px rgba(91, 71, 224, .12); }
+.plan-tier.current { border-color: var(--purple); background: #faf9ff; }
+.plan-tier-current {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 42px;
+  margin-top: auto; border-radius: 10px; background: var(--purple-soft); color: var(--purple);
+  font-size: 13.5px; font-weight: 800;
+}
 .plan-tier.enterprise { border-style: dashed; border-color: #cbd5e1; background: #fbfbfd; }
 .plan-tier-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
 .plan-tier-head strong { font-size: 15px; font-weight: 800; }

@@ -10,10 +10,24 @@ import {
   type PaymentMethodView,
 } from "@/components/mypage/PaymentMethodRow";
 import { PortalRail } from "@/components/portal/PortalRail";
-import { selectablePlans, type SelectablePlanId } from "@/lib/billing/plans";
+import {
+  planLabels,
+  selectablePlans,
+  selfServicePlanIds,
+  type SelectablePlanId,
+} from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/client";
 
 export type MypageSection = "profile" | "plan" | "members";
+
+type CurrentPlan = {
+  planId: SelectablePlanId | null;
+  label: string;
+  monthlyFee: number;
+  includedTickets: number;
+  nextBillingDate: string | null;
+  status: string;
+};
 
 type PlanUsage = {
   periodStart: string;
@@ -42,6 +56,7 @@ type Props = {
     billingEmail: string;
   };
   usage: PlanUsage;
+  plan: CurrentPlan;
   startedAt: string | null;
   memberCount: number;
   paymentMethod: PaymentMethodView | null;
@@ -120,14 +135,6 @@ const profileFields: Array<{
   { key: "businessNumber", label: "사업자등록번호", required: false, placeholder: "000-00-00000" },
 ];
 
-// 표시용 한글 이름. 저장 값(plan.id)은 건드리지 않습니다.
-const planLabels: Record<SelectablePlanId, string> = {
-  Starter: "라이트",
-  Basic: "베이직",
-  Pro: "프로",
-  Enterprise: "엔터프라이즈",
-};
-
 const planHighlights: Record<SelectablePlanId, string[]> = {
   Starter: ["채팅 · 게시판 · 이메일 응대", "반복 문의 자동화", "월간 운영 리포트"],
   Basic: ["라이트 전체 포함", "교환 · 환불 · 클레임 운영", "격주 운영 리포트"],
@@ -171,6 +178,7 @@ export function MypageSettings(props: Props) {
     props.cardNotice?.tone === "error" ? props.cardNotice.text : "",
   );
   const [saving, setSaving] = useState(false);
+  const [changingPlanId, setChangingPlanId] = useState<SelectablePlanId | null>(null);
 
   // 카드 등록 결과는 한 번만 보여 주고 주소에서 지웁니다.
   useEffect(() => {
@@ -180,14 +188,21 @@ export function MypageSettings(props: Props) {
 
   const title = sectionTitles[active];
   const usage = props.usage;
-  const recommendedPlan = usage.recommendedPlanId
-    ? selectablePlans.find((plan) => plan.id === usage.recommendedPlanId)
-    : undefined;
+  const currentPlan = props.plan;
   const gaugeWidth = Math.min(100, (usage.projectedBillableCount / gaugeMax) * 100);
+
+  // 이미 예상 상담량을 감당하는 플랜을 쓰고 있으면 상위 플랜을 권하지 않습니다.
+  const currentPlanCoversUsage =
+    currentPlan.includedTickets > 0 &&
+    usage.projectedBillableCount <= currentPlan.includedTickets;
+  const recommendedPlan =
+    usage.recommendedPlanId && !currentPlanCoversUsage
+      ? selectablePlans.find((plan) => plan.id === usage.recommendedPlanId)
+      : undefined;
 
   const menus: Array<{ id: MypageSection; label: string; badge: ReactNode }> = [
     { id: "profile", label: "고객 정보", badge: null },
-    { id: "plan", label: "이용 플랜", badge: <span className="menu-badge">Free</span> },
+    { id: "plan", label: "이용 플랜", badge: <span className="menu-badge">{currentPlan.label}</span> },
     {
       id: "members",
       label: "멤버 관리",
@@ -203,6 +218,41 @@ export function MypageSettings(props: Props) {
     setError("");
     if (typeof window !== "undefined") {
       window.history.replaceState(window.history.state, "", `/mypage?section=${next}`);
+    }
+  }
+
+  // 플랜 변경은 구독 정보를 바꿀 뿐, 이 호출이 즉시 결제를 일으키지는 않습니다.
+  async function changePlan(planId: SelectablePlanId, label: string, monthlyFee: number) {
+    setMessage("");
+    setError("");
+    if (monthlyFee > 0 && !props.paymentMethod) {
+      setError("결제 수단을 먼저 등록해 주세요.");
+      return;
+    }
+    const price = monthlyFee > 0 ? `월 ₩${numberFormat.format(monthlyFee)} (부가세 별도)` : "무료";
+    if (!window.confirm(`${label} 플랜(${price})으로 변경할까요?`)) return;
+
+    setChangingPlanId(planId);
+    try {
+      const response = await fetch("/api/mypage/plan", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(result.error || "플랜을 변경하지 못했습니다.");
+      } else {
+        setMessage(result.message || "플랜을 변경했습니다.");
+        router.refresh();
+      }
+    } catch {
+      setError("네트워크 연결을 확인해 주세요.");
+    } finally {
+      setChangingPlanId(null);
     }
   }
 
@@ -348,10 +398,13 @@ export function MypageSettings(props: Props) {
                 <div className="plan-chips">
                   <span className="chip chip-status"><i />이용 중</span>
                 </div>
-                <h2>Free 플랜</h2>
+                <h2>{currentPlan.label} 플랜</h2>
                 <p>
-                  지금은 Free 플랜으로 상담 응대와 리포트를 이용하고 있습니다. 카드를 등록해 두면
-                  플랜을 시작하는 날부터 자동으로 결제됩니다.
+                  {currentPlan.planId
+                    ? props.paymentMethod
+                      ? `월 상담 ${numberFormat.format(currentPlan.includedTickets)}건까지 포함된 플랜입니다. 등록된 카드로 매월 결제됩니다.`
+                      : `월 상담 ${numberFormat.format(currentPlan.includedTickets)}건까지 포함된 플랜입니다. 카드를 등록해야 다음 결제가 진행됩니다.`
+                    : "지금은 Free 플랜으로 상담 응대와 리포트를 이용하고 있습니다. 카드를 등록하고 아래에서 플랜을 선택하면 바로 시작할 수 있습니다."}
                 </p>
                 <div className="plan-hero-actions">
                   <Link href="/contact" className="button-primary">
@@ -364,11 +417,14 @@ export function MypageSettings(props: Props) {
               <dl className="info-rows">
                 <div>
                   <dt>월 이용료</dt>
-                  <dd className="strong">₩0</dd>
+                  <dd className="strong">
+                    ₩{numberFormat.format(currentPlan.monthlyFee)}
+                    {currentPlan.monthlyFee > 0 ? <small> · 부가세 별도</small> : null}
+                  </dd>
                 </div>
                 <div>
-                  <dt>이용 시작일</dt>
-                  <dd>{formatDate(props.startedAt)}</dd>
+                  <dt>{currentPlan.nextBillingDate ? "다음 결제일" : "이용 시작일"}</dt>
+                  <dd>{formatDate(currentPlan.nextBillingDate ?? props.startedAt)}</dd>
                 </div>
                 <div>
                   <dt>워크스페이스 멤버</dt>
@@ -432,10 +488,10 @@ export function MypageSettings(props: Props) {
                           지금 추세라면 <strong>{planLabels[recommendedPlan.id]} 플랜({recommendedPlan.description})</strong>이
                           적정 구간입니다.
                         </p>
-                        <Link href="/contact" className="button-ghost">
-                          {planLabels[recommendedPlan.id]} 플랜 상담 신청
+                        <a href="#plan-ladder" className="button-ghost">
+                          플랜 변경하기
                           {ArrowIcon}
-                        </Link>
+                        </a>
                       </div>
                     ) : null}
                   </div>
@@ -453,22 +509,32 @@ export function MypageSettings(props: Props) {
               <div className="mypage-card-head">
                 <div>
                   <h2>플랜</h2>
-                  <p>상담량이 늘어나면 언제든 상위 플랜으로 확장할 수 있습니다.</p>
+                  <p>
+                    {props.canManage
+                      ? "상담량에 맞는 플랜을 직접 선택할 수 있습니다. 엔터프라이즈는 협의 후 적용됩니다."
+                      : "플랜 변경은 owner 또는 admin만 할 수 있습니다."}
+                  </p>
                 </div>
               </div>
 
               <div className="plan-ladder">
                 {selectablePlans.map((plan) => {
-                  const recommended = plan.id === usage.recommendedPlanId;
+                  const isCurrent = plan.id === currentPlan.planId;
+                  const recommended = !isCurrent && plan.id === recommendedPlan?.id;
                   const enterprise = plan.id === "Enterprise";
+                  const selfService = selfServicePlanIds.includes(plan.id);
                   return (
                     <article
                       key={plan.id}
-                      className={`plan-tier${recommended ? " recommended" : ""}${enterprise ? " enterprise" : ""}`}
+                      className={`plan-tier${isCurrent ? " current" : ""}${recommended ? " recommended" : ""}${enterprise ? " enterprise" : ""}`}
                     >
                       <div className="plan-tier-head">
                         <strong>{planLabels[plan.id]}</strong>
-                        {recommended ? <span className="chip chip-purple small">사용량 기준 추천</span> : null}
+                        {isCurrent ? (
+                          <span className="chip chip-purple small">이용 중</span>
+                        ) : recommended ? (
+                          <span className="chip chip-purple small">사용량 기준 추천</span>
+                        ) : null}
                       </div>
                       <div className="plan-tier-price">
                         <b>{enterprise ? "별도 협의" : `₩${numberFormat.format(plan.monthlyFee)}`}</b>
@@ -480,12 +546,24 @@ export function MypageSettings(props: Props) {
                           <li key={item}>{item}</li>
                         ))}
                       </ul>
-                      <Link
-                        href="/contact"
-                        className={recommended ? "button-primary block" : "button-secondary block"}
-                      >
-                        {enterprise ? "영업팀 문의" : "상담 신청"}
-                      </Link>
+                      {isCurrent ? (
+                        <span className="plan-tier-current">현재 이용 중인 플랜</span>
+                      ) : selfService && props.canManage ? (
+                        <button
+                          type="button"
+                          className={recommended ? "button-primary block" : "button-secondary block"}
+                          disabled={changingPlanId !== null}
+                          onClick={() =>
+                            void changePlan(plan.id, planLabels[plan.id], plan.monthlyFee)
+                          }
+                        >
+                          {changingPlanId === plan.id ? "변경 중..." : "이 플랜으로 변경"}
+                        </button>
+                      ) : (
+                        <Link href="/contact" className="button-secondary block">
+                          {enterprise ? "영업팀 문의" : "상담 신청"}
+                        </Link>
+                      )}
                     </article>
                   );
                 })}
@@ -493,6 +571,9 @@ export function MypageSettings(props: Props) {
 
               <p className="plan-note">
                 모든 금액은 부가세 별도이며, 제공량을 초과한 상담은 건당 과금됩니다.
+                {props.paymentMethod
+                  ? " 변경한 플랜은 등록된 카드로 다음 결제일에 청구됩니다."
+                  : " 유료 플랜으로 변경하려면 아래에서 카드를 먼저 등록해 주세요."}
               </p>
             </section>
 
