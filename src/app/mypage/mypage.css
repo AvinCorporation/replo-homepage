@@ -233,6 +233,45 @@
 .plan-tier ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; color: #475569; font-size: 13px; line-height: 1.5; }
 .plan-tier .button-primary, .plan-tier .button-secondary { min-height: 42px; margin-top: auto; font-size: 13.5px; }
 .plan-note { margin: 16px 0 0; color: #94a3b8; font-size: 12.5px; line-height: 1.6; }
+.plan-scheduled {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 0;
+  border: 1px solid #e8e4ff; border-radius: 12px; background: #faf9ff;
+  padding: 12px 14px; color: #475569; font-size: 13.5px; line-height: 1.5;
+}
+.plan-scheduled svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--purple); }
+.plan-scheduled strong { font-weight: 800; color: var(--navy); }
+.plan-scheduled button {
+  margin-left: auto; border: 0; background: transparent; color: var(--muted);
+  font: inherit; font-size: 12.5px; font-weight: 700; text-decoration: underline; cursor: pointer;
+}
+.plan-scheduled button:hover:not(:disabled) { color: var(--navy); }
+
+/* 플랜 변경 확인 */
+.plan-modal-backdrop {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center;
+  background: rgba(15, 23, 42, .38); padding: 20px;
+}
+.plan-modal {
+  width: 100%; max-width: 420px; border: 1px solid var(--border); border-radius: 20px;
+  background: #fff; padding: 26px; box-shadow: 0 18px 48px rgba(15, 23, 42, .18);
+}
+.plan-modal header p { margin: 0 0 8px; color: var(--purple); font-size: 11px; font-weight: 900; letter-spacing: .14em; }
+.plan-modal header h3 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.03em; }
+.plan-modal header > span { display: block; margin-top: 6px; color: var(--muted); font-size: 13.5px; }
+.plan-modal-body { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 18px; }
+.charge-total { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.charge-total span { color: #475569; font-size: 14px; font-weight: 700; }
+.charge-total strong { font-size: 26px; font-weight: 800; letter-spacing: -.03em; }
+.charge-lines { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; padding: 14px 16px; border-radius: 12px; background: #fbfbfd; list-style: none; }
+.charge-lines li { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; }
+.charge-lines b { color: #334155; font-weight: 700; }
+.charge-next { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.charge-next span { color: var(--muted); font-size: 13.5px; }
+.charge-next strong { font-size: 14.5px; font-weight: 800; }
+.plan-modal-note { margin: 14px 0 0; color: #94a3b8; font-size: 12.5px; line-height: 1.6; }
+.plan-modal-actions { display: flex; gap: 10px; margin-top: 22px; }
+.plan-modal-actions .button-secondary { flex: 0 0 auto; }
+.plan-modal-actions .button-primary { flex: 1; }
 .plan-help { display: flex; align-items: center; gap: 9px; margin: 0; padding: 2px 4px; color: var(--muted); font-size: 13.5px; }
 .plan-help svg { width: 16px; height: 16px; flex: 0 0 auto; }
 .plan-help a { color: var(--purple); font-weight: 800; }

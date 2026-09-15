@@ -1,5 +1,8 @@
 import "server-only";
-import { encryptCredentialValue } from "@/lib/security/integrationCredentials";
+import {
+  decryptCredentialValue,
+  encryptCredentialValue,
+} from "@/lib/security/integrationCredentials";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { TossBillingAuth } from "@/lib/billing/toss";
 
@@ -67,6 +70,29 @@ export async function savePaymentMethod(workspaceId: string, billing: TossBillin
 
   if (error || !data) throw new Error("카드 정보를 저장하지 못했습니다.");
   return toSummary(data as Record<string, unknown>);
+}
+
+// 결제를 실행할 때만 씁니다. 빌링키는 이 함수 밖으로 나가면 안 됩니다.
+export async function loadBillingCredentials(workspaceId: string) {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("payment_methods")
+    .select("billing_key_encrypted, customer_key")
+    .eq("workspace_id", workspaceId)
+    .eq("status", "active")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data?.billing_key_encrypted || !data.customer_key) return null;
+  try {
+    return {
+      billingKey: decryptCredentialValue(data.billing_key_encrypted as string),
+      customerKey: data.customer_key as string,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function removePaymentMethod(workspaceId: string) {

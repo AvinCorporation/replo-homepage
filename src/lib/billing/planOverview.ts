@@ -25,6 +25,8 @@ export type CurrentPlan = {
   monthlyFee: number;
   includedTickets: number;
   nextBillingDate: string | null;
+  currentPeriodEnd: string | null;
+  scheduledPlanId: SelectablePlanId | null;
   status: string;
 };
 
@@ -41,6 +43,8 @@ const freePlan: CurrentPlan = {
   monthlyFee: 0,
   includedTickets: 0,
   nextBillingDate: null,
+  currentPeriodEnd: null,
+  scheduledPlanId: null,
   status: "active",
 };
 
@@ -96,7 +100,9 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
       .eq("status", "active"),
     admin
       .from("subscriptions")
-      .select("plan_name, monthly_fee, included_tickets, next_billing_date, status")
+      .select(
+        "plan_name, monthly_fee, included_tickets, next_billing_date, current_period_end, scheduled_plan_name, status",
+      )
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
       .limit(1)
@@ -141,12 +147,15 @@ function toCurrentPlan(row: Record<string, unknown> | null): CurrentPlan {
   const plan = findSelectablePlan(row.plan_name);
   if (!plan || status === "canceled") return freePlan;
 
+  const scheduled = findSelectablePlan(row.scheduled_plan_name);
   return {
     planId: plan.id,
     label: planLabels[plan.id],
     monthlyFee: Number(row.monthly_fee ?? plan.monthlyFee),
     includedTickets: Number(row.included_tickets ?? plan.includedTickets),
     nextBillingDate: (row.next_billing_date as string | null) ?? null,
+    currentPeriodEnd: (row.current_period_end as string | null) ?? null,
+    scheduledPlanId: scheduled?.id ?? null,
     status,
   };
 }

@@ -79,3 +79,53 @@ export async function issueBillingKey(input: {
     ownerType: text(card.ownerType),
   };
 }
+
+export type TossCharge = {
+  paymentKey: string | null;
+  orderId: string;
+  status: string | null;
+  approvedAt: string | null;
+};
+
+// 빌링키로 실제 결제를 실행합니다. orderId는 워크스페이스·플랜·기간으로
+// 결정되는 값이라, 같은 기간을 두 번 청구하면 토스가 중복으로 거절합니다.
+export async function chargeBillingKey(input: {
+  billingKey: string;
+  customerKey: string;
+  amount: number;
+  orderId: string;
+  orderName: string;
+}): Promise<TossCharge> {
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    throw new TossError("결제 금액이 올바르지 않습니다.", "invalid_amount");
+  }
+
+  const authorization = Buffer.from(`${secretKey()}:`).toString("base64");
+  const response = await fetch(`${TOSS_API_BASE}/billing/${encodeURIComponent(input.billingKey)}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${authorization}`,
+      "Content-Type": "application/json",
+      "Idempotency-Key": input.orderId,
+    },
+    body: JSON.stringify({
+      customerKey: input.customerKey,
+      amount: input.amount,
+      orderId: input.orderId,
+      orderName: input.orderName,
+    }),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    throw new TossError(text(payload.message) ?? "결제에 실패했습니다.", text(payload.code));
+  }
+
+  return {
+    paymentKey: text(payload.paymentKey),
+    orderId: text(payload.orderId) ?? input.orderId,
+    status: text(payload.status),
+    approvedAt: text(payload.approvedAt),
+  };
+}

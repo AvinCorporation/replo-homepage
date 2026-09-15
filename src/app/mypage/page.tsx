@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
 import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
 import { loadPlanOverview } from "@/lib/billing/planOverview";
+import { todayInSeoul } from "@/lib/billing/subscriptionBilling";
 import { workspaceCustomerKey } from "@/lib/billing/toss";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
@@ -88,6 +89,7 @@ export default async function MyPage({
       }}
       usage={planOverview.usage}
       plan={planOverview.plan}
+      today={todayInSeoul()}
       startedAt={planOverview.startedAt}
       memberCount={planOverview.memberCount}
       paymentMethod={
