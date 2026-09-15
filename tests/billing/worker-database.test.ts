@@ -39,6 +39,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
     "20260914010000_primary_backup_payment_methods.sql",
     "20260914020000_scheduled_plan_changes.sql",
     "20260915000000_decouple_plan_change_consent.sql",
+    "20260915020000_self_service_plan_enrollment.sql",
   ])
     await db.exec(
       await readFile(
@@ -470,8 +471,13 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
         retry: { basis: "billing_date", days: [1, 3, 5] },
       };
       const planPolicy = {
-        termsVersion: "plan-change-v1",
+        version: "self-service-plan-v1",
+        termsVersion: "plan-change-v2",
         vat: "excluded",
+        firstCharge: "contract_date",
+        retry: { basis: "billing_date", days: [] },
+        cardChangeArrears: "manual_approval",
+        cancellationInstructions: "마이페이지 문의하기를 통해 요청",
       };
       await query(
         "update subscriptions set plan_name='Lite',monthly_fee=590000,included_tickets=200,billing_policy=$2,auto_charge_start_date='2026-09-01',first_period_start='2026-09-01',billing_anchor_day=1,enrollment_confirmed_at=null,updated_at=now() where id=$1",
@@ -487,7 +493,7 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
         ),
       );
       const conditions = (code: string, name: string, fee: number, tickets: number) => ({
-        termsVersion: "plan-change-v1",
+        termsVersion: "plan-change-v2",
         fromPlan: "Lite",
         planCode: code,
         planName: name,
@@ -497,6 +503,10 @@ test("worker hardening migration enforces backoff and circuit breakers", async (
         vatAmount: fee / 10,
         totalAmount: fee + fee / 10,
         effectiveOn,
+        billingCycle: "monthly",
+        billingAnchorDay: 1,
+        firstChargeDate: effectiveOn,
+        automaticPayment: true,
       });
 
       await assert.rejects(

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { GoogleAuthButton } from "../auth/GoogleAuthButton";
 import { homeCopy } from "../../content/homeCopy";
 import { createClient } from "../../lib/supabase/client";
-import { shouldShowPortalLogin } from "../../lib/deployment/host";
 
 const PATHS: Record<string, string> = {
   arrowRight: "M5 12h14M13 5l7 7-7 7",
@@ -140,16 +139,13 @@ function MarketingNav({
   authReady,
   onLogin,
   onLogout,
-  showPortalLogin,
 }: {
   authenticated: boolean;
   authReady: boolean;
   onLogin: () => void;
   onLogout: () => void;
-  showPortalLogin: boolean;
 }) {
   const [menu, setMenu] = useState(false);
-  const showAuthControls = showPortalLogin || authenticated;
 
   useEffect(() => {
     if (!menu) return;
@@ -174,13 +170,9 @@ function MarketingNav({
             ))}
           </nav>
           <div className="mnav-cta">
-            {!authReady ? (
-              <span className="mnav-auth-skeleton" aria-label="로그인 상태 확인 중" role="status" />
-            ) : showAuthControls ? (
-              <button className="btn btn-ghost btn-sm" type="button" onClick={authenticated ? onLogout : onLogin}>
-                {authenticated ? "로그아웃" : "로그인"}
-              </button>
-            ) : null}
+            <button className="btn btn-ghost btn-sm" type="button" onClick={authenticated ? onLogout : onLogin}>
+              {authReady && authenticated ? "로그아웃" : "로그인"}
+            </button>
             <ButtonLink href={authenticated ? "/dashboard" : "/contact"} size="sm">
               {authenticated ? "대시보드 바로가기" : homeCopy.navigation.cta}
             </ButtonLink>
@@ -202,18 +194,16 @@ function MarketingNav({
             <a key={id} href={`#${id}`} onClick={() => setMenu(false)}>{label}</a>
           ))}
           <div className="col gap-10" style={{ marginTop: 18 }}>
-            {authReady && showAuthControls ? (
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  authenticated ? onLogout() : onLogin();
-                }}
-              >
-                {authenticated ? "로그아웃" : "로그인"}
-              </button>
-            ) : null}
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                setMenu(false);
+                authenticated ? onLogout() : onLogin();
+              }}
+            >
+              {authReady && authenticated ? "로그아웃" : "로그인"}
+            </button>
             <ButtonLink href={authenticated ? "/dashboard" : "/contact"}>
               {authenticated ? "대시보드 바로가기" : homeCopy.navigation.cta}
             </ButtonLink>
@@ -782,13 +772,10 @@ export function SourceHome() {
   // session is known, avoiding a login/logout button flash.
   const [authReady, setAuthReady] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
-  const [showPortalLogin, setShowPortalLogin] = useState(false);
   const [authError, setAuthError] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
-    setShowPortalLogin(shouldShowPortalLogin(window.location.hostname));
-
     const params = new URLSearchParams(window.location.search);
     const wantLogin = params.get("login") === "1";
     if (params.get("error") === "auth_failed") setAuthError(true);
@@ -827,7 +814,6 @@ export function SourceHome() {
           authReady={authReady}
           onLogin={() => setLoginOpen(true)}
           onLogout={handleLogout}
-          showPortalLogin={showPortalLogin}
         />
         <Hero />
         <ChecklistSection />

@@ -10,35 +10,64 @@ import {
 } from "./domain";
 import { TossClient } from "./client";
 import { sameJsonValue } from "./json";
+import { planChangePolicy } from "../planChanges";
 export async function registrationConditions(workspaceId: string) {
-  const { data: subscription, error } = await billingAdmin()
+  const admin = billingAdmin();
+  const { data: subscription, error } = await admin
     .from("subscriptions")
     .select(
       "id,monthly_fee,billing_policy,next_billing_date,billing_anchor_day,auto_charge_start_date,first_period_start,enrollment_confirmed_at",
     )
     .eq("workspace_id", workspaceId)
-    .not("enrollment_confirmed_at", "is", null)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (
-    error ||
-    !subscription ||
+  if (error || !subscription)
+    throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+
+  let monthlyFee = subscription.monthly_fee;
+  let firstChargeDate = subscription.next_billing_date;
+  let billingAnchorDay = subscription.billing_anchor_day;
+  let policyValue = subscription.billing_policy;
+
+  if (!subscription.enrollment_confirmed_at) {
+    const { data: pending, error: pendingError } = await admin
+      .from("subscription_plan_changes")
+      .select("to_monthly_fee,effective_on,billing_policy_snapshot")
+      .eq("subscription_id", subscription.id)
+      .eq("status", "scheduled")
+      .maybeSingle();
+    if (pendingError) throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+    if (pending) {
+      monthlyFee = pending.to_monthly_fee;
+      firstChargeDate = pending.effective_on;
+      billingAnchorDay = 1;
+      policyValue = pending.billing_policy_snapshot ?? planChangePolicy();
+    } else if (
+      !subscription.auto_charge_start_date ||
+      !subscription.first_period_start ||
+      !billingAnchorDay
+    ) {
+      throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+    }
+  } else if (
     !subscription.auto_charge_start_date ||
     !subscription.first_period_start ||
-    !subscription.billing_anchor_day
-  )
+    !billingAnchorDay
+  ) {
     throw new Error("BILLING_POLICY_NOT_CONFIRMED");
-  const policy = parsePolicy(subscription.billing_policy);
+  }
+
+  const policy = parsePolicy(policyValue);
   const conditions = {
     policy,
-    amount: invoiceAmount(subscription.monthly_fee, policy.vat),
+    amount: invoiceAmount(monthlyFee, policy.vat),
     cycle: "monthly",
     firstChargeDate: confirmedFirstChargeDate(
       policy.firstCharge,
-      subscription.next_billing_date,
+      firstChargeDate,
     ),
-    billingAnchorDay: subscription.billing_anchor_day,
+    billingAnchorDay,
   };
   return conditions;
 }

@@ -18,8 +18,13 @@ export function nextPlanEffectiveOn(now = new Date()): string {
 
 export function planChangePolicy() {
   return {
-    termsVersion: "plan-change-v1",
+    version: "self-service-plan-v1",
+    termsVersion: "plan-change-v2",
     vat: "excluded" as const,
+    firstCharge: "contract_date" as const,
+    retry: { basis: "billing_date" as const, days: [] as number[] },
+    cardChangeArrears: "manual_approval" as const,
+    cancellationInstructions: "마이페이지 문의하기를 통해 요청",
   };
 }
 
@@ -41,5 +46,9 @@ export function planChangeConditions(input: {
     vatAmount: totalAmount - input.plan.monthlyFee,
     totalAmount,
     effectiveOn: input.effectiveOn,
+    billingCycle: "monthly" as const,
+    billingAnchorDay: 1,
+    firstChargeDate: input.effectiveOn,
+    automaticPayment: true,
   };
 }

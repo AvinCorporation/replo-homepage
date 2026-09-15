@@ -35,7 +35,7 @@ test("plan consent includes VAT excluded totals and the effective date", () => {
       effectiveOn: "2026-10-01",
     }),
     {
-      termsVersion: "plan-change-v1",
+      termsVersion: "plan-change-v2",
       fromPlan: "Lite",
       planCode: "Basic",
       planName: "베이직",
@@ -45,6 +45,10 @@ test("plan consent includes VAT excluded totals and the effective date", () => {
       vatAmount: 99000,
       totalAmount: 1089000,
       effectiveOn: "2026-10-01",
+      billingCycle: "monthly",
+      billingAnchorDay: 1,
+      firstChargeDate: "2026-10-01",
+      automaticPayment: true,
     },
   );
 });

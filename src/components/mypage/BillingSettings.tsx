@@ -585,13 +585,17 @@ export function BillingSettings() {
                       다음 달 1일부터 새 요금이 적용돼요. 이번 달 이용료는 바뀌지
                       않습니다.
                     </p>
+                    <p>
+                      적용일부터 매월 1일에 등록한 주 카드로 실제 결제 금액이
+                      자동 결제돼요. 결제에 실패해도 자동으로 다시 결제하지 않아요.
+                    </p>
                     <label>
                       <input
                         type="checkbox"
                         checked={planAgreed}
                         onChange={(event) => setPlanAgreed(event.target.checked)}
                       />{" "}
-                      요금과 시작일을 확인했고, 요금제 변경에 동의합니다.
+                      요금, 시작일과 매월 자동결제 내용을 확인하고 신청합니다.
                     </label>
                     <button
                       type="button"
@@ -599,7 +603,7 @@ export function BillingSettings() {
                       onClick={schedulePlanChange}
                       disabled={!planAgreed || planBusy}
                     >
-                      {planBusy ? "예약 중…" : "다음 달 1일 변경 예약"}
+                      {planBusy ? "신청 중…" : "이 요금제로 신청"}
                     </button>
                   </div>
                 ) : null}
