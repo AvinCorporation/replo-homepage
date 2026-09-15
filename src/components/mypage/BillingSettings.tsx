@@ -437,7 +437,10 @@ export function BillingSettings() {
                 ) : (
                   <div className="billing-plan-grid">
                     {planData?.plans.map((plan) => {
-                      const current = plan.code === currentPlanCode;
+                      const current =
+                        plan.code === currentPlanCode &&
+                        plan.monthlyFee === s?.monthly_fee &&
+                        plan.includedTickets === s?.included_tickets;
                       const pending =
                         plan.code === planData.pendingChange?.to_plan_code;
                       const selected = plan.code === selectedPlanCode;
