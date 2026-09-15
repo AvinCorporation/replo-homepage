@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BillingSettings } from "./BillingSettings";
+import { BillingSettings, type Summary } from "./BillingSettings";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MemberManagement } from "@/components/mypage/MemberManagement";
@@ -15,6 +15,7 @@ type Props = {
   canManage: boolean;
   loginEmail: string;
   roleLabel: string;
+  initialBillingData?: Summary | null;
   customer: {
     companyName: string;
     brandName: string;
@@ -180,7 +181,9 @@ export function MypageSettings(props: Props) {
           </form>
         ) : null}
 
-        {active === "plan" ? <BillingSettings /> : null}
+        {active === "plan" ? (
+          <BillingSettings initialData={props.initialBillingData} />
+        ) : null}
 
         {active === "members" ? <div className="embedded-settings"><MemberManagement /></div> : null}
       </main>
