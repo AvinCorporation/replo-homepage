@@ -1,6 +1,6 @@
 "use client";
 import Script from "next/script";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   invoiceAmount,
   parsePolicy,
@@ -124,6 +124,24 @@ declare global {
 }
 const won = (n: number | null) =>
   n === null ? "금액 확인 필요" : `${n.toLocaleString("ko-KR")}원`;
+const planNames: Record<string, string> = {
+  Starter: "라이트",
+  Lite: "라이트",
+  Basic: "베이직",
+  Pro: "프로",
+  Enterprise: "엔터프라이즈",
+  Free: "Free",
+};
+const dateLabel = (value: string) =>
+  new Date(`${value}T00:00:00+09:00`).toLocaleDateString("ko-KR", {
+    timeZone: "Asia/Seoul",
+  });
+const usageEndDate = (exclusiveEnd: string) => {
+  const value = new Date(
+    new Date(`${exclusiveEnd}T00:00:00+09:00`).getTime() - 86_400_000,
+  );
+  return value.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul" });
+};
 const statuses: Record<string, string> = {
   active: "이용 중",
   past_due: "미납 확인 필요",
@@ -144,6 +162,7 @@ export function BillingSettings() {
   const [busy, setBusy] = useState(false);
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [sdkReady, setSdkReady] = useState(false);
+  const [shouldLoadSdk, setShouldLoadSdk] = useState(false);
   const [planData, setPlanData] = useState<PlanData | null>(null);
   const [planPanelOpen, setPlanPanelOpen] = useState(false);
   const [selectedPlanCode, setSelectedPlanCode] = useState("");
@@ -165,13 +184,16 @@ export function BillingSettings() {
   }, []);
   useEffect(() => {
     let mounted = true;
-    loadSummary().catch(() => {
-      if (mounted)
-        setError(
-          "결제 정보를 불러오지 못했습니다. 잠시 후 다시 확인해 주세요.",
-        );
-    });
-    loadPlans().catch(() => undefined);
+    loadSummary()
+      .then(() => {
+        if (mounted) loadPlans().catch(() => undefined);
+      })
+      .catch(() => {
+        if (mounted)
+          setError(
+            "결제 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+          );
+      });
     return () => {
       mounted = false;
     };
@@ -230,6 +252,7 @@ export function BillingSettings() {
     }
   }
   async function showConditions() {
+    setShouldLoadSdk(true);
     setBusy(true);
     setError("");
     try {
@@ -319,25 +342,74 @@ export function BillingSettings() {
   const selectedPlan = planData?.plans.find(
     (plan) => plan.code === selectedPlanCode,
   );
+  const attemptsByInvoice = useMemo(() => {
+    const grouped = new Map<string, Attempt[]>();
+    for (const attempt of data?.attempts ?? []) {
+      const attempts = grouped.get(attempt.invoice_id) ?? [];
+      attempts.push(attempt);
+      grouped.set(attempt.invoice_id, attempts);
+    }
+    return grouped;
+  }, [data?.attempts]);
+  const canceledAmountByAttempt = useMemo(() => {
+    const amounts = new Map<string, number>();
+    for (const cancellation of data?.cancellations ?? []) {
+      if (cancellation.status !== "DONE") continue;
+      amounts.set(
+        cancellation.payment_attempt_id,
+        (amounts.get(cancellation.payment_attempt_id) ?? 0) +
+          cancellation.cancel_amount,
+      );
+    }
+    return amounts;
+  }, [data?.cancellations]);
+  const isFreePlan = !s?.plan_name || s.plan_name === "Free";
   const currentPlanCode = s?.plan_name === "Starter" ? "Lite" : s?.plan_name;
   const currentPlanLabel =
     planData?.plans.find((plan) => plan.code === currentPlanCode)?.name ??
-    s?.plan_name;
+    (s?.plan_name ? (planNames[s.plan_name] ?? s.plan_name) : "Free");
   return (
     <div className="billing-settings">
-      {data?.canManage && (
+      {data?.canManage && shouldLoadSdk ? (
         <Script
           src="https://js.tosspayments.com/v2/standard"
           onReady={() => setSdkReady(true)}
           onError={() => setError("카드 등록 창을 불러오지 못했습니다.")}
         />
-      )}
+      ) : null}
       {error && (
-        <p role="alert" className="mypage-message error">
-          {error}
-        </p>
+        <div role="alert" className="mypage-message error billing-error-message">
+          <span>{error}</span>
+          {!data ? (
+            <button
+              type="button"
+              className="billing-secondary"
+              onClick={() => {
+                setError("");
+                loadSummary().catch(() =>
+                  setError("결제 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."),
+                );
+              }}
+            >
+              다시 시도
+            </button>
+          ) : null}
+        </div>
       )}
-      {!data && !error && <p role="status">결제 정보를 불러오는 중입니다.</p>}
+      {!data && !error ? (
+        <div className="billing-loading" role="status" aria-label="결제 정보를 불러오는 중">
+          {Array.from({ length: 3 }, (_, card) => (
+            <section className="mypage-card" aria-hidden="true" key={card}>
+              <div className="mypage-skel-line" style={{ width: 100, height: 20 }} />
+              <div className="billing-loading-grid">
+                {Array.from({ length: card === 0 ? 4 : 2 }, (_, item) => (
+                  <div className="mypage-skel-line" key={item} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : null}
       {data && (
         <>
           <section className="mypage-card">
@@ -354,8 +426,7 @@ export function BillingSettings() {
                 </button>
               ) : null}
             </div>
-            {s ? (
-              <div className="current-plan-summary">
+            <div className="current-plan-summary">
                 <div>
                   <span>현재 플랜</span>
                   <strong>{currentPlanLabel}</strong>
@@ -363,28 +434,34 @@ export function BillingSettings() {
                 <div>
                   <span>
                     월 기본 이용료
-                    {s.billing_policy
+                    {s?.billing_policy
                       ? ` · VAT ${s.billing_policy.vat === "included" ? "포함" : "별도"}`
                       : ""}
                   </span>
-                  <strong>{won(s.monthly_fee)}</strong>
+                  <strong>{isFreePlan ? "0원" : won(s?.monthly_fee ?? null)}</strong>
                 </div>
                 <div>
-                  <span>포함 문의량</span>
+                  <span>월 상담 건수</span>
                   <strong>
-                    {s.included_tickets === null
-                      ? "확인 필요"
-                      : `${s.included_tickets.toLocaleString()}건`}
+                    {isFreePlan
+                      ? "기본 제공"
+                      : s?.included_tickets === null
+                        ? "담당자 확인 중"
+                        : `${s!.included_tickets!.toLocaleString()}건`}
                   </strong>
                 </div>
                 <div>
-                  <span>구독 상태</span>
-                  <strong>{statuses[s.status] ?? s.status}</strong>
+                  <span>이용 상태</span>
+                  <strong>
+                    {isFreePlan ? "이용 중" : (statuses[s!.status] ?? s!.status)}
+                  </strong>
                 </div>
               </div>
-            ) : (
-              <p>확정된 이용 플랜이 없습니다. 담당자에게 문의해 주세요.</p>
-            )}
+            {isFreePlan ? (
+              <p className="billing-action-notice">
+                현재 유료 요금제를 이용하고 있지 않아 Free 플랜이 적용되어 있어요.
+              </p>
+            ) : null}
             {planData?.pendingChange ? (
               <p className="billing-plan-pending" role="status">
                 <strong>
@@ -412,10 +489,7 @@ export function BillingSettings() {
                 <div className="billing-consent-head">
                   <div>
                     <h3>변경할 요금제 선택</h3>
-                    <p>
-                      선택한 요금제는 다음 달 1일부터 적용됩니다. 요금제 변경
-                      동의는 카드 등록과 별도로 저장됩니다.
-                    </p>
+                    <p>새 요금제는 다음 달 1일부터 시작돼요.</p>
                   </div>
                   <button
                     type="button"
@@ -488,7 +562,7 @@ export function BillingSettings() {
                 )}
                 {selectedPlan?.conditions ? (
                   <div className="billing-plan-consent">
-                    <h4>{selectedPlan.name} 요금제 변경 조건</h4>
+                    <h4>{selectedPlan.name} 요금제로 변경</h4>
                     <dl>
                       <div>
                         <dt>월 기본 이용료</dt>
@@ -499,7 +573,7 @@ export function BillingSettings() {
                         <dd>{won(selectedPlan.conditions.vatAmount)}</dd>
                       </div>
                       <div>
-                        <dt>월 청구액</dt>
+                        <dt>실제 결제 금액</dt>
                         <dd>{won(selectedPlan.conditions.totalAmount)}</dd>
                       </div>
                       <div>
@@ -508,8 +582,8 @@ export function BillingSettings() {
                       </div>
                     </dl>
                     <p>
-                      적용일부터 새로 생성되는 청구에 변경 요금이 반영됩니다.
-                      이미 생성된 청구서는 변경되지 않으며 일할 계산은 하지 않습니다.
+                      다음 달 1일부터 새 요금이 적용돼요. 이번 달 이용료는 바뀌지
+                      않습니다.
                     </p>
                     <label>
                       <input
@@ -517,7 +591,7 @@ export function BillingSettings() {
                         checked={planAgreed}
                         onChange={(event) => setPlanAgreed(event.target.checked)}
                       />{" "}
-                      위 요금제, 월 청구액, 적용일을 확인했으며 변경에 동의합니다.
+                      요금과 시작일을 확인했고, 요금제 변경에 동의합니다.
                     </label>
                     <button
                       type="button"
@@ -548,7 +622,7 @@ export function BillingSettings() {
                         })
                       : data.nextInvoice?.billing_date) ??
                     s?.next_billing_date ??
-                    "미정"}
+                    (!isFreePlan ? "결제일 확인 중" : "예정된 결제 없음")}
                 </strong>
               </div>
               <div>
@@ -558,7 +632,9 @@ export function BillingSettings() {
                     ? won(data.nextInvoice.amount)
                     : expected !== null
                       ? won(expected)
-                      : "청구 조건 확인 필요"}
+                      : !isFreePlan
+                        ? "결제 금액 확인 중"
+                        : "0원"}
                 </strong>
               </div>
             </div>
@@ -595,18 +671,18 @@ export function BillingSettings() {
                 ))}
               </div>
             ) : (
-              <p>등록된 자동결제 카드가 없습니다.</p>
+              <div className="billing-empty-state">
+                <strong>등록된 결제 카드가 없어요.</strong>
+                <p>자동결제에 사용할 카드를 등록해 주세요.</p>
+              </div>
             )}
-            <p className="billing-card-note">
-              결제는 주 카드로만 진행됩니다. 백업 카드는 자동 승인에 사용되지
-              않으며, 주 결제수단으로 변경한 뒤부터 사용됩니다.
-            </p>
-            {!s?.enrollment_confirmed_at ? (
-              <p className="billing-action-notice">
-                담당자 확인 후 자동결제를 시작할 수 있습니다.{" "}
-                <a href="/contact">문의하기</a>
+            {data.paymentMethods.length ? (
+              <p className="billing-card-note">
+                결제는 주 카드로 진행돼요. 백업 카드를 사용하려면 먼저 주 카드로
+                변경해 주세요.
               </p>
-            ) : data.canManage ? (
+            ) : null}
+            {data.canManage ? (
               data.paymentMethods.length < 2 ? (
                 <button
                   className="billing-primary"
@@ -614,12 +690,12 @@ export function BillingSettings() {
                   disabled={busy}
                 >
                   {data.paymentMethods.length === 0
-                    ? "주 카드 등록"
+                    ? "결제 카드 등록하기"
                     : "백업 카드 등록"}
                 </button>
               ) : (
                 <p className="billing-action-notice">
-                  주 카드와 백업 카드가 모두 등록되어 있습니다. 새 카드 등록은{" "}
+                  주 카드와 백업 카드가 모두 등록되어 있어요. 새 카드를 등록하려면{" "}
                   <a href="/contact">담당자에게 문의해 주세요.</a>
                 </p>
               )
@@ -629,13 +705,18 @@ export function BillingSettings() {
                 <a href="/mypage?section=members">멤버 확인</a>
               </p>
             )}
+            {!s?.enrollment_confirmed_at && data.canManage ? (
+              <p className="billing-card-note">
+                카드 등록 후 자동결제 시작일과 금액을 확인해 드려요.
+              </p>
+            ) : null}
             {conditions && (
               <div className="billing-consent">
                 <div className="billing-consent-head">
                   <h3>
                     {data.paymentMethods.length === 0
-                      ? "주 카드 자동결제 조건 확인"
-                      : "백업 카드 등록 조건 확인"}
+                      ? "결제 카드 등록"
+                      : "백업 카드 등록"}
                   </h3>
                   <button
                     type="button"
@@ -649,28 +730,27 @@ export function BillingSettings() {
                     닫기
                   </button>
                 </div>
-                <p>월 청구금액: {won(conditions.amount)} (VAT 포함)</p>
+                <p>매월 결제 금액: {won(conditions.amount)} (VAT 포함)</p>
                 <p>
-                  결제주기: 매월 {conditions.billingAnchorDay}일 · 해당 날짜가
-                  없으면 말일
+                  결제일: 매월 {conditions.billingAnchorDay}일
                 </p>
                 <p>
                   첫 결제:{" "}
                   {conditions.policy.firstCharge === "registration"
-                    ? "카드 등록 후 첫 청구 작업 시"
+                    ? "카드 등록 후 안내된 일정에 결제"
                     : (conditions.firstChargeDate ?? "담당자 확인 필요")}
                 </p>
                 <p>
-                  재시도:{" "}
+                  결제가 안 되면:{" "}
                   {conditions.policy.retry.days.length
-                    ? `${conditions.policy.retry.basis === "billing_date" ? "최초 청구일" : "직전 실패일"} 기준 ${conditions.policy.retry.days.join(", ")}일 후`
+                    ? `${conditions.policy.retry.days.join(", ")}일 뒤 다시 시도`
                     : "자동 재시도 없음"}
                 </p>
                 <p>
                   {data.paymentMethods.length === 0
                     ? "등록한 첫 카드는 주 결제수단이 됩니다."
                     : "새 카드는 백업으로 저장되며 기존 주 카드는 유지됩니다. 등록에 실패해도 기존 카드는 바뀌지 않습니다."}{" "}
-                  기존 미납금 재결제는 별도 확인 후 진행합니다.
+                  이전에 결제되지 않은 금액은 확인 없이 다시 결제하지 않아요.
                 </p>
                 <p>해지 요청: {conditions.policy.cancellationInstructions}</p>
                 <label>
@@ -679,7 +759,7 @@ export function BillingSettings() {
                     checked={agreed}
                     onChange={(e) => setAgreed(e.target.checked)}
                   />{" "}
-                  위 자동결제 조건에 동의합니다.
+                  위 내용을 확인했고 카드 등록에 동의합니다.
                 </label>
                 <button
                   className="billing-primary"
@@ -696,10 +776,14 @@ export function BillingSettings() {
             )}
           </section>
           <section className="mypage-card">
-            <h2>결제내역</h2>
-            <p>최근 청구 50건 · 청구기간의 종료일은 다음 기간 시작일입니다.</p>
+            <h2>결제 내역</h2>
+            <p className="billing-section-description">
+              최근 결제와 처리 상태를 확인할 수 있어요.
+            </p>
             {data.invoices.length === 0 ? (
-              <p>결제내역이 없습니다.</p>
+              <div className="billing-empty-state compact">
+                <strong>아직 결제 내역이 없어요.</strong>
+              </div>
             ) : (
               <div
                 className="billing-table-scroll"
@@ -709,7 +793,7 @@ export function BillingSettings() {
                 <table>
                   <thead>
                     <tr>
-                      <th>청구일 / 기간</th>
+                      <th>결제일 / 이용 기간</th>
                       <th>금액</th>
                       <th>상태 / 재시도</th>
                       <th>영수증 / 취소</th>
@@ -717,22 +801,18 @@ export function BillingSettings() {
                   </thead>
                   <tbody>
                     {data.invoices.map((i) => {
-                      const a = data.attempts.find(
-                        (x) => x.invoice_id === i.id,
-                      );
-                      const cancels = data.cancellations
-                        .filter(
-                          (c) =>
-                            c.payment_attempt_id === a?.id &&
-                            c.status === "DONE",
-                        )
-                        .reduce((sum, c) => sum + c.cancel_amount, 0);
+                      const invoiceAttempts = attemptsByInvoice.get(i.id) ?? [];
+                      const a = invoiceAttempts[0];
+                      const cancels = a
+                        ? (canceledAmountByAttempt.get(a.id) ?? 0)
+                        : 0;
                       return (
                         <tr key={i.id}>
-                          <td>
-                            {i.billing_date}
+                          <td data-label="결제일 / 이용 기간">
+                            {dateLabel(i.billing_date)}
                             <small>
-                              {i.period_start} ~ {i.period_end}
+                              이용 기간: {dateLabel(i.period_start)} ~{" "}
+                              {usageEndDate(i.period_end)}
                             </small>
                             {a?.approved_at && (
                               <small>
@@ -744,16 +824,13 @@ export function BillingSettings() {
                               </small>
                             )}
                           </td>
-                          <td>{won(i.amount)}</td>
-                          <td>
+                          <td data-label="금액">{won(i.amount)}</td>
+                          <td data-label="상태">
                             {statuses[i.status] ?? i.status}
-                            {data.attempts.filter((x) => x.invoice_id === i.id)
-                              .length > 1 && (
+                            {invoiceAttempts.length > 1 && (
                               <details>
                                 <summary>결제 시도 내역</summary>
-                                {data.attempts
-                                  .filter((x) => x.invoice_id === i.id)
-                                  .map((item) => (
+                                {invoiceAttempts.map((item) => (
                                     <p key={item.id}>
                                       {item.approved_at || item.created_at
                                         ? new Date(
@@ -790,7 +867,7 @@ export function BillingSettings() {
                                 </small>
                               )}
                           </td>
-                          <td>
+                          <td data-label="영수증 / 취소">
                             {a?.receipt_url && (
                               <a
                                 href={a.receipt_url}

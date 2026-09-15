@@ -9,7 +9,8 @@ const BILLING_ERRORS: Record<string, { status: number; error: string }> = {
   },
   BILLING_POLICY_NOT_CONFIRMED: {
     status: 409,
-    error: "자동결제 조건이 아직 확정되지 않았습니다. 담당자에게 문의해 주세요.",
+    error:
+      "카드 등록 전에 결제일과 금액 확인이 필요해요. 문의하기로 요청을 남겨 주세요.",
   },
   BILLING_CONSENT_CHANGED: {
     status: 409,
