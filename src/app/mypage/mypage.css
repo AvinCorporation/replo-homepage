@@ -174,6 +174,22 @@
 .info-rows.boxed small { display: block; margin-top: 4px; color: var(--muted); font-size: 13.5px; }
 .info-rows.boxed small.danger { color: #b91c1c; font-weight: 700; }
 .info-rows.boxed .button-secondary { min-height: 40px; flex: 0 0 auto; border-radius: 9px; padding: 0 15px; font-size: 13px; }
+.payment-method-row { flex-wrap: wrap; }
+.payment-consent {
+  flex: 0 0 100%; margin: 0 0 14px; border: 1px solid #ddd6fe; border-radius: 12px;
+  background: #faf9ff; padding: 18px;
+}
+.info-rows.boxed .payment-consent > strong { font-size: 15px; }
+.payment-consent p { margin: 8px 0 0; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+.payment-consent label { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; color: var(--ink); font-size: 13.5px; line-height: 1.5; }
+.payment-consent label input { margin-top: 3px; }
+.payment-consent-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.payment-consent-actions .button-primary,
+.payment-consent-actions .button-secondary { min-height: 40px; }
+.payment-card-list { display: grid; gap: 7px; margin-top: 7px; }
+.info-rows.boxed .payment-card-list small { display: flex; align-items: center; gap: 8px; margin: 0; }
+.payment-card-list small > span { border-radius: 999px; background: #ede9fe; color: var(--purple-dark); padding: 3px 7px; font-size: 11px; font-weight: 800; }
+.payment-card-list button { border: 0; background: transparent; color: var(--purple-dark); padding: 2px 4px; font-size: 12px; font-weight: 800; cursor: pointer; }
 .pill-disabled {
   flex: 0 0 auto; border: 1px solid var(--border); border-radius: 9px; background: #f1f3f5;
   color: #94a3b8; padding: 11px 15px; font-size: 13px; font-weight: 700;

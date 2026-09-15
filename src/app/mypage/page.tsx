@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
 import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
-import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
+import { loadPaymentMethods } from "@/lib/billing/paymentMethod";
 import { loadPlanOverview } from "@/lib/billing/planOverview";
-import { todayInSeoul } from "@/lib/billing/subscriptionBilling";
-import { tossClientKey, workspaceCustomerKey } from "@/lib/billing/toss";
+import { seoulToday } from "@/lib/billing/toss/domain";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
 import { createClient } from "@/lib/supabase/server";
@@ -54,7 +53,7 @@ export default async function MyPage({
 
   const supabase = await createClient();
 
-  const [brandResult, planOverview, paymentMethod] = await Promise.all([
+  const [brandResult, planOverview, paymentMethods] = await Promise.all([
     supabase
       .from("brands")
       .select("name")
@@ -63,7 +62,7 @@ export default async function MyPage({
       .limit(1)
       .maybeSingle(),
     loadPlanOverview(access.workspace.id),
-    loadPaymentMethod(access.workspace.id),
+    loadPaymentMethods(access.workspace.id),
   ]);
 
   const customer = access.workspace;
@@ -89,21 +88,10 @@ export default async function MyPage({
       }}
       usage={planOverview.usage}
       plan={planOverview.plan}
-      today={todayInSeoul()}
+      today={seoulToday()}
       startedAt={planOverview.startedAt}
       memberCount={planOverview.memberCount}
-      paymentMethod={
-        paymentMethod
-          ? {
-              cardCompany: paymentMethod.cardCompany,
-              maskedNumber: paymentMethod.maskedNumber,
-              cardType: paymentMethod.cardType,
-              registeredAt: paymentMethod.registeredAt,
-            }
-          : null
-      }
-      tossClientKey={tossClientKey()}
-      customerKey={workspaceCustomerKey(access.workspace.id)}
+      paymentMethods={paymentMethods}
       cardNotice={parseCardNotice(searchParams?.card)}
     />
   );

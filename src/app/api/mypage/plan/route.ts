@@ -1,106 +1,114 @@
 import { NextResponse } from "next/server";
-import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
+import { planChangeConditions, planChangePolicy, nextPlanEffectiveOn } from "@/lib/billing/planChanges";
 import { findSelectablePlan, planLabels, selfServicePlanIds } from "@/lib/billing/plans";
-import {
-  BillingError,
-  schedulePlanChange,
-  startPaidPlan,
-} from "@/lib/billing/subscriptionBilling";
-import { canManageWorkspace, getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { billingAdmin, billingAccess, checkOrigin, errorResponse, rpc } from "@/lib/billing/toss/server";
 
 export const dynamic = "force-dynamic";
 
-function formatDate(value: string | null) {
-  if (!value) return "다음 결제일";
-  const [, month, day] = value.split("-");
-  return `${Number(month)}월 ${Number(day)}일`;
-}
-
 export async function PATCH(request: Request) {
-  const access = await getCurrentWorkspaceAccess();
-  if (!access) return NextResponse.json({ error: "로그인이 필요합니다." }, { status: 401 });
-  if (!canManageWorkspace(access)) {
-    return NextResponse.json({ error: "플랜을 변경할 권한이 없습니다." }, { status: 403 });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as {
-    planId?: string;
-    cancelScheduled?: boolean;
-  };
-
-  // 예약된 플랜 변경 취소.
-  if (body.cancelScheduled) {
-    try {
-      await schedulePlanChange({
-        workspaceId: access.workspace.id,
-        actorUserId: access.user.id,
-        planId: null,
-      });
-      return NextResponse.json({ ok: true, message: "예약된 플랜 변경을 취소했습니다." });
-    } catch (error) {
-      const status = error instanceof BillingError ? error.status : 500;
-      const message = error instanceof Error ? error.message : "취소하지 못했습니다.";
-      return NextResponse.json({ error: message }, { status });
-    }
-  }
-
-  const plan = findSelectablePlan(body.planId);
-  if (!plan || !selfServicePlanIds.includes(plan.id)) {
-    return NextResponse.json({ error: "선택할 수 없는 플랜입니다." }, { status: 400 });
-  }
-
-  const paymentMethod = await loadPaymentMethod(access.workspace.id);
-  if (!paymentMethod) {
-    return NextResponse.json({ error: "결제 수단을 먼저 등록해 주세요." }, { status: 400 });
-  }
-
-  const admin = createAdminClient();
-  const { data: subscription } = await admin
-    .from("subscriptions")
-    .select("plan_name, status, next_billing_date")
-    .eq("workspace_id", access.workspace.id)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const currentPlan = findSelectablePlan(subscription?.plan_name);
-  const onPaidPlan = Boolean(currentPlan && subscription?.status === "active");
-
-  if (currentPlan?.id === plan.id) {
-    return NextResponse.json({ error: "이미 이용 중인 플랜입니다." }, { status: 400 });
-  }
-
   try {
-    // 이미 유료 플랜을 쓰는 중이면 이번 기간은 그대로 두고 다음 결제일부터 바꿉니다.
-    if (onPaidPlan) {
-      const { effectiveOn } = await schedulePlanChange({
-        workspaceId: access.workspace.id,
-        actorUserId: access.user.id,
-        planId: plan.id,
-      });
+    checkOrigin(request);
+    const access = await billingAccess(undefined, true);
+    const body = (await request.json().catch(() => ({}))) as {
+      planId?: string;
+      agreed?: boolean;
+      cancelScheduled?: boolean;
+    };
+    const admin = billingAdmin();
+
+    let { data: subscription, error: subscriptionError } = await admin
+      .from("subscriptions")
+      .select("id,plan_name,monthly_fee,included_tickets,status")
+      .eq("workspace_id", access.workspaceId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (subscriptionError) throw new Error("BILLING_DATABASE_ERROR");
+
+    if (!subscription) {
+      const created = await admin
+        .from("subscriptions")
+        .insert({
+          workspace_id: access.workspaceId,
+          plan_name: "Free",
+          monthly_fee: 0,
+          included_tickets: 0,
+          status: "active",
+        })
+        .select("id,plan_name,monthly_fee,included_tickets,status")
+        .single();
+      if (created.error || !created.data) throw new Error("BILLING_DATABASE_ERROR");
+      subscription = created.data;
+    }
+
+    if (body.cancelScheduled) {
+      const { data: canceled, error } = await admin
+        .from("subscription_plan_changes")
+        .update({
+          status: "canceled",
+          canceled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("workspace_id", access.workspaceId)
+        .eq("subscription_id", subscription.id)
+        .eq("status", "scheduled")
+        .select("id");
+      if (error) throw new Error("BILLING_DATABASE_ERROR");
       return NextResponse.json({
         ok: true,
-        scheduled: true,
-        message: `${formatDate(effectiveOn)}부터 ${planLabels[plan.id]} 플랜으로 변경됩니다.`,
+        message: canceled?.length
+          ? "예약된 요금제 변경을 취소했습니다."
+          : "취소할 요금제 변경이 없습니다.",
       });
     }
 
-    const charge = await startPaidPlan({
-      workspaceId: access.workspace.id,
-      actorUserId: access.user.id,
-      planId: plan.id,
+    if (body.agreed !== true) {
+      return NextResponse.json(
+        { error: "요금과 다음 달 시작일을 확인해 주세요." },
+        { status: 400 },
+      );
+    }
+
+    const plan = findSelectablePlan(body.planId);
+    if (!plan || !selfServicePlanIds.includes(plan.id)) {
+      return NextResponse.json(
+        { error: "선택할 수 없는 요금제입니다." },
+        { status: 400 },
+      );
+    }
+
+    const policy = planChangePolicy();
+    const effectiveOn = nextPlanEffectiveOn();
+    const billingPlanCode = plan.id === "Starter" ? "Lite" : plan.id;
+    const conditions = planChangeConditions({
+      fromPlan: subscription.plan_name,
+      plan: {
+        code: billingPlanCode,
+        displayName: planLabels[plan.id],
+        monthlyFee: plan.monthlyFee,
+        includedTickets: plan.includedTickets,
+      },
+      policy,
+      effectiveOn,
+    });
+
+    await rpc<string>("billing_schedule_plan_change", {
+      p_workspace: access.workspaceId,
+      p_subscription: subscription.id,
+      p_user: access.userId,
+      p_plan_code: billingPlanCode,
+      p_expected_effective_on: effectiveOn,
+      p_policy: policy,
+      p_conditions: conditions,
     });
 
     return NextResponse.json({
       ok: true,
-      scheduled: false,
-      charge,
-      message: `${planLabels[plan.id]} 플랜을 시작했습니다.`,
+      scheduled: true,
+      effectiveOn,
+      message: `${planLabels[plan.id]} 요금제가 ${effectiveOn}부터 시작됩니다. 카드가 없다면 아래에서 등록해 주세요.`,
     });
   } catch (error) {
-    const status = error instanceof BillingError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "플랜을 변경하지 못했습니다.";
-    return NextResponse.json({ error: message }, { status });
+    return errorResponse(error);
   }
 }

@@ -16,7 +16,6 @@ import {
   selfServicePlanIds,
   type SelectablePlanId,
 } from "@/lib/billing/plans";
-import { planFirstCharge } from "@/lib/billing/proration";
 import { createClient } from "@/lib/supabase/client";
 
 export type MypageSection = "profile" | "plan" | "members";
@@ -63,9 +62,7 @@ type Props = {
   today: string;
   startedAt: string | null;
   memberCount: number;
-  paymentMethod: PaymentMethodView | null;
-  tossClientKey: string;
-  customerKey: string;
+  paymentMethods: PaymentMethodView[];
   cardNotice: { tone: "success" | "error"; text: string } | null;
 };
 
@@ -172,6 +169,11 @@ function formatKoreanDate(dateKey: string | null) {
   return `${Number(month)}월 ${Number(day)}일`;
 }
 
+function nextMonthFirst(dateKey: string) {
+  const [year, month] = dateKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+}
+
 function formatPeriod(start: string, end: string) {
   const startLabel = start.replace(/-/g, ". ");
   const endLabel = end.slice(5).replace(/-/g, ". ");
@@ -179,6 +181,7 @@ function formatPeriod(start: string, end: string) {
 }
 
 export function MypageSettings(props: Props) {
+  const paymentMethod = props.paymentMethods.find((method) => method.isDefault) ?? props.paymentMethods[0] ?? null;
   const router = useRouter();
   const [active, setActive] = useState<MypageSection>(props.initialSection);
   const [profile, setProfile] = useState(props.customer);
@@ -233,14 +236,10 @@ export function MypageSettings(props: Props) {
     }
   }
 
-  // 결제가 걸리는 동작이라 금액을 보여 주고 한 번 더 확인받습니다.
+  // 다음 달부터 적용될 요금과 자동결제 조건을 먼저 확인받습니다.
   function openPlanChange(planId: SelectablePlanId) {
     setMessage("");
     setError("");
-    if (!props.paymentMethod) {
-      setError("결제 수단을 먼저 등록해 주세요.");
-      return;
-    }
     setPendingPlanId(planId);
   }
 
@@ -250,7 +249,7 @@ export function MypageSettings(props: Props) {
       const response = await fetch("/api/mypage/plan", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, agreed: true }),
       });
       const result = (await response.json().catch(() => ({}))) as {
         message?: string;
@@ -441,10 +440,10 @@ export function MypageSettings(props: Props) {
                 <h2>{currentPlan.label} 플랜</h2>
                 <p>
                   {currentPlan.planId
-                    ? props.paymentMethod
+                    ? paymentMethod
                       ? `월 상담 ${numberFormat.format(currentPlan.includedTickets)}건까지 포함된 플랜입니다. 등록된 카드로 매월 결제됩니다.`
                       : `월 상담 ${numberFormat.format(currentPlan.includedTickets)}건까지 포함된 플랜입니다. 카드를 등록해야 다음 결제가 진행됩니다.`
-                    : "지금은 Free 플랜으로 상담 응대와 리포트를 이용하고 있습니다. 카드를 등록하고 아래에서 플랜을 선택하면 바로 시작할 수 있습니다."}
+                    : "지금은 Free 플랜입니다. 아래에서 유료 요금제를 신청한 뒤 결제 카드를 등록하면 다음 달 1일부터 시작됩니다."}
                 </p>
                 {currentPlan.scheduledPlanId ? (
                   <p className="plan-scheduled">
@@ -490,8 +489,8 @@ export function MypageSettings(props: Props) {
                 </div>
                 <div>
                   <dt>결제 수단</dt>
-                  <dd className={props.paymentMethod ? "" : "muted"}>
-                    {props.paymentMethod ? cardLabel(props.paymentMethod) : "미등록"}
+                  <dd className={paymentMethod ? "" : "muted"}>
+                    {paymentMethod ? cardLabel(paymentMethod) : "미등록"}
                   </dd>
                 </div>
               </dl>
@@ -627,9 +626,9 @@ export function MypageSettings(props: Props) {
 
               <p className="plan-note">
                 모든 금액은 부가세 별도이며, 제공량을 초과한 상담은 건당 과금됩니다.
-                {props.paymentMethod
+                {paymentMethod
                   ? " 변경한 플랜은 등록된 카드로 다음 결제일에 청구됩니다."
-                  : " 유료 플랜으로 변경하려면 아래에서 카드를 먼저 등록해 주세요."}
+                  : " 유료 플랜을 신청한 뒤 아래에서 결제 카드를 등록해 주세요."}
               </p>
             </section>
 
@@ -660,10 +659,9 @@ export function MypageSettings(props: Props) {
                   </button>
                 </div>
                 <PaymentMethodRow
-                  paymentMethod={props.paymentMethod}
+                  paymentMethods={props.paymentMethods}
                   canManage={props.canManage}
-                  clientKey={props.tossClientKey}
-                  customerKey={props.customerKey}
+                  registrationReady={Boolean(props.plan.planId || props.plan.scheduledPlanId)}
                 />
               </div>
             </section>
@@ -674,54 +672,34 @@ export function MypageSettings(props: Props) {
                   {(() => {
                     const target = selectablePlans.find((plan) => plan.id === pendingPlanId);
                     if (!target) return null;
-                    const scheduling = Boolean(currentPlan.planId);
-                    const charge = planFirstCharge(target.monthlyFee, props.today);
+                    const effectiveOn = nextMonthFirst(props.today);
+                    const totalAmount = target.monthlyFee * 1.1;
                     return (
                       <>
                         <header>
-                          <p>{scheduling ? "플랜 변경" : "플랜 시작"}</p>
+                          <p>요금제 신청</p>
                           <h3>{planLabels[target.id]} 플랜</h3>
                           <span>월 ₩{numberFormat.format(target.monthlyFee)} · 부가세 별도</span>
                         </header>
 
-                        {scheduling ? (
-                          <div className="plan-modal-body">
-                            <p className="plan-modal-note">
-                              지금은 청구되지 않습니다. {formatKoreanDate(currentPlan.nextBillingDate)}부터{" "}
-                              {planLabels[target.id]} 플랜이 적용되고, 그날 ₩
-                              {numberFormat.format(target.monthlyFee)}이 결제됩니다.
-                              {currentPlan.currentPeriodEnd
-                                ? ` 그때까지는 ${currentPlan.label} 플랜 그대로 이용합니다.`
-                                : ""}
-                            </p>
+                        <div className="plan-modal-body">
+                          <div className="charge-total">
+                            <span>매월 실제 결제 금액</span>
+                            <strong>₩{numberFormat.format(totalAmount)}</strong>
                           </div>
-                        ) : (
-                          <div className="plan-modal-body">
-                            <div className="charge-total">
-                              <span>오늘 결제</span>
-                              <strong>₩{numberFormat.format(charge.totalAmount)}</strong>
-                            </div>
-                            <ul className="charge-lines">
-                              {charge.lines.map((line) => (
-                                <li key={line.label}>
-                                  <span>{line.label}</span>
-                                  <b>₩{numberFormat.format(line.amount)}</b>
-                                </li>
-                              ))}
-                            </ul>
-                            <div className="charge-next">
-                              <span>다음 결제</span>
-                              <strong>
-                                {formatKoreanDate(charge.nextBillingDate)} · ₩
-                                {numberFormat.format(target.monthlyFee)}
-                              </strong>
-                            </div>
-                            <p className="plan-modal-note">
-                              이후 매월 1일에 자동으로 결제됩니다.
-                              {props.paymentMethod ? ` 결제 수단: ${cardLabel(props.paymentMethod)}` : ""}
-                            </p>
+                          <ul className="charge-lines">
+                            <li><span>월 기본 이용료</span><b>₩{numberFormat.format(target.monthlyFee)}</b></li>
+                            <li><span>VAT 10%</span><b>₩{numberFormat.format(target.monthlyFee / 10)}</b></li>
+                          </ul>
+                          <div className="charge-next">
+                            <span>시작일</span>
+                            <strong>{formatKoreanDate(effectiveOn)}</strong>
                           </div>
-                        )}
+                          <p className="plan-modal-note">
+                            오늘은 결제되지 않아요. 다음 달 1일부터 등록한 주 카드로 매월 자동결제됩니다.
+                            {paymentMethod ? ` 현재 주 카드: ${cardLabel(paymentMethod)}` : " 신청 후 아래에서 카드를 등록해 주세요."}
+                          </p>
+                        </div>
 
                         <div className="plan-modal-actions">
                           <button
@@ -738,11 +716,7 @@ export function MypageSettings(props: Props) {
                             disabled={changingPlanId !== null}
                             onClick={() => void confirmPlanChange(target.id)}
                           >
-                            {changingPlanId
-                              ? "처리 중..."
-                              : scheduling
-                                ? "변경 예약"
-                                : `₩${numberFormat.format(charge.totalAmount)} 결제하고 시작`}
+                            {changingPlanId ? "처리 중..." : "다음 달 1일부터 신청"}
                           </button>
                         </div>
                       </>

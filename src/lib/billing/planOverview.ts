@@ -101,7 +101,7 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
     admin
       .from("subscriptions")
       .select(
-        "plan_name, monthly_fee, included_tickets, next_billing_date, current_period_end, scheduled_plan_name, status",
+        "id, plan_name, monthly_fee, included_tickets, next_billing_date, status",
       )
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
@@ -110,7 +110,21 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
   ]);
 
   const memberCount = memberResult.count ?? 0;
-  const plan = toCurrentPlan(subscriptionResult.data as Record<string, unknown> | null);
+  const subscription = subscriptionResult.data as Record<string, unknown> | null;
+  const pendingResult = subscription?.id
+    ? await admin
+        .from("subscription_plan_changes")
+        .select("to_plan_code,effective_on")
+        .eq("subscription_id", subscription.id)
+        .eq("status", "scheduled")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+  const plan = toCurrentPlan(
+    subscription,
+    pendingResult.data as Record<string, unknown> | null,
+  );
 
   if (metricsResult.error || !metricsResult.data?.length) {
     return { usage: emptyUsage(start, end), plan, startedAt, memberCount };
@@ -141,20 +155,25 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
   };
 }
 
-function toCurrentPlan(row: Record<string, unknown> | null): CurrentPlan {
+function toCurrentPlan(
+  row: Record<string, unknown> | null,
+  pending: Record<string, unknown> | null,
+): CurrentPlan {
   if (!row) return freePlan;
   const status = (row.status as string | null) ?? "active";
-  const plan = findSelectablePlan(row.plan_name);
+  const plan = findSelectablePlan(row.plan_name === "Lite" ? "Starter" : row.plan_name);
   if (!plan || status === "canceled") return freePlan;
 
-  const scheduled = findSelectablePlan(row.scheduled_plan_name);
+  const scheduled = findSelectablePlan(
+    pending?.to_plan_code === "Lite" ? "Starter" : pending?.to_plan_code,
+  );
   return {
     planId: plan.id,
     label: planLabels[plan.id],
     monthlyFee: Number(row.monthly_fee ?? plan.monthlyFee),
     includedTickets: Number(row.included_tickets ?? plan.includedTickets),
     nextBillingDate: (row.next_billing_date as string | null) ?? null,
-    currentPeriodEnd: (row.current_period_end as string | null) ?? null,
+    currentPeriodEnd: null,
     scheduledPlanId: scheduled?.id ?? null,
     status,
   };
