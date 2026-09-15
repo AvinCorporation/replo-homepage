@@ -44,11 +44,19 @@ create table public.billing_registration_sessions (
 );
 create unique index one_pending_billing_registration on public.billing_registration_sessions(workspace_id) where status in ('pending','processing');
 alter table public.payment_methods
-  add column provider text,
-  add column method_type text default 'card', add column issuer_code text, add column card_type text, add column owner_type text,
-  add column is_default boolean not null default false,
-  add column registered_at timestamptz, add column revoked_at timestamptz, add column updated_at timestamptz not null default now(),
+  add column if not exists provider text,
+  add column if not exists method_type text default 'card', add column if not exists issuer_code text, add column if not exists card_type text, add column if not exists owner_type text,
+  add column if not exists is_default boolean not null default false,
+  add column if not exists registered_at timestamptz, add column if not exists revoked_at timestamptz, add column if not exists updated_at timestamptz not null default now(),
   add constraint payment_methods_workspace_identity unique(id, workspace_id);
+-- Older production schemas already have these generic payment columns without
+-- the defaults used by Toss billing. Normalize them before billing writes begin.
+update public.payment_methods set method_type='card' where method_type is null;
+update public.payment_methods set updated_at=now() where updated_at is null;
+alter table public.payment_methods
+  alter column method_type set default 'card',
+  alter column updated_at set default now(),
+  alter column updated_at set not null;
 create unique index one_default_toss_card on public.payment_methods(workspace_id) where provider = 'toss' and status = 'active' and is_default;
 create table public.billing_credentials (
   id uuid primary key default gen_random_uuid(), workspace_id uuid not null references public.workspaces(id),
@@ -99,6 +107,9 @@ create table public.billing_operator_actions (
   action text not null, reason text not null, created_at timestamptz not null default now()
 );
 alter table public.billing_events add column invoice_id uuid, add column payment_attempt_id uuid, add column dedupe_key text unique;
+-- Some deployed legacy schemas made status mandatory. Toss billing records the
+-- event state in event_type and may legitimately omit this legacy field.
+alter table public.billing_events alter column status drop not null;
 -- Remove all legacy policies AND client write grants, including permissive ALL policies.
 do $$ declare t text; p record; begin
   foreach t in array array['subscriptions','payment_methods','billing_invoices','payment_attempts','billing_events','payment_cancellations','billing_profiles','billing_credentials','billing_registration_sessions','billing_consents','billing_runtime_settings','billing_operator_actions'] loop

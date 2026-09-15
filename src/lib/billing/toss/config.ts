@@ -19,7 +19,14 @@ export function billingConfig(
     (environment === "test" && expected === env.BILLING_PRODUCTION_SUPABASE_URL)
   )
     throw new Error("BILLING_DATABASE_MISMATCH");
-  const prefix = environment === "production" ? "live_" : "test_";
+  const chargesEnabled = env.BILLING_CHARGES_ENABLED === "true";
+  const productionTestMode =
+    environment === "production" &&
+    env.BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION === "true";
+  if (productionTestMode && chargesEnabled)
+    throw new Error("BILLING_TEST_KEYS_CHARGES_FORBIDDEN");
+  const prefix =
+    environment === "production" && !productionTestMode ? "live_" : "test_";
   const clientKey = env.TOSS_CLIENT_KEY ?? "";
   const secretKey = env.TOSS_SECRET_KEY ?? "";
   if (
@@ -55,6 +62,7 @@ export function billingConfig(
     secretKey,
     site: site.origin,
     keyRing,
-    chargesEnabled: env.BILLING_CHARGES_ENABLED === "true",
+    chargesEnabled,
+    productionTestMode,
   };
 }

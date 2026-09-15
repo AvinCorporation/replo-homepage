@@ -1,6 +1,7 @@
 # Copy values into the development/Preview secret store, never commit real values.
 BILLING_ENVIRONMENT=test
 BILLING_CHARGES_ENABLED=false
+BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION=false
 BILLING_SITE_URL=http://localhost:3000
 BILLING_TEST_SUPABASE_URL=
 BILLING_PRODUCTION_SUPABASE_URL=

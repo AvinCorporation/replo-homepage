@@ -52,10 +52,13 @@
 | `BILLING_ENCRYPTION_KEY_VERSION` | 현재 쓰기용 키 버전 |
 | `BILLING_ENCRYPTION_KEYS` | 버전별 32-byte base64 키 JSON. Preview/Production 별도 키 |
 | `BILLING_CHARGES_ENABLED` | 기본 `false` |
+| `BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION` | 라이브 도메인에서 Test 빌링키 등록을 검증할 때만 `true`. 이때 자동 승인은 강제로 차단 |
 | `BILLING_CRON_SECRET` | `/api/cron/billing`의 Bearer 인증 |
 | 기존 Supabase 환경변수 | public URL/anon key, 서버 전용 service role |
 
 키 rotation: 새 버전을 keyring에 추가 → active 버전 변경 → 별도 서버 작업에서 이전 자격정보 복호화/재암호화 → 이전 버전 사용 건이 0건인지 확인 후 이전 키 제거. 재암호화 실행기는 이번 범위에 포함하지 않습니다.
+
+운영 Auth만 사용할 수 있는 초기 검증 기간에는 `BILLING_ENVIRONMENT=production`, 운영 Supabase URL, Toss Test 키와 `BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION=true`를 함께 사용할 수 있습니다. 이 모드는 `BILLING_CHARGES_ENABLED=true`를 거부하므로 카드 등록 UI만 검증할 수 있습니다. Live 키 전환 전 Test로 등록한 결제수단과 credential을 운영자가 정리하고, 허용 플래그를 제거해야 합니다.
 
 ## 미확정 사업 정책: 기본값 없음
 

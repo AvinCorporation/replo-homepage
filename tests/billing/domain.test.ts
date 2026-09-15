@@ -167,6 +167,28 @@ test("billing is off by default and preview cannot use production keys/database"
     billingConfig({ ...env, BILLING_TEST_SUPABASE_URL: undefined }),
   );
 });
+test("production can use Toss test keys only in explicit no-charge mode", () => {
+  const productionEnv = {
+    ...env,
+    VERCEL_ENV: "production",
+    BILLING_ENVIRONMENT: "production",
+    BILLING_PRODUCTION_SUPABASE_URL: "https://production.invalid",
+    NEXT_PUBLIC_SUPABASE_URL: "https://production.invalid",
+    TOSS_CLIENT_KEY: "test_ck_fixture",
+    TOSS_SECRET_KEY: "test_sk_fixture",
+    BILLING_SITE_URL: "https://replo.invalid",
+    BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION: "true",
+  };
+  const config = billingConfig(productionEnv);
+  assert.equal(config.productionTestMode, true);
+  assert.equal(config.chargesEnabled, false);
+  assert.throws(() =>
+    billingConfig({
+      ...productionEnv,
+      BILLING_CHARGES_ENABLED: "true",
+    }),
+  );
+});
 test("consent comparison ignores object key order but detects changed terms", () => {
   const server = {
     amount: 590000,
