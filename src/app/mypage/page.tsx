@@ -3,7 +3,7 @@ import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSe
 import { loadPaymentMethod } from "@/lib/billing/paymentMethod";
 import { loadPlanOverview } from "@/lib/billing/planOverview";
 import { todayInSeoul } from "@/lib/billing/subscriptionBilling";
-import { workspaceCustomerKey } from "@/lib/billing/toss";
+import { tossClientKey, workspaceCustomerKey } from "@/lib/billing/toss";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
 import { getSessionClaims } from "@/lib/supabase/claims";
 import { createClient } from "@/lib/supabase/server";
@@ -102,7 +102,7 @@ export default async function MyPage({
             }
           : null
       }
-      tossClientKey={process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY ?? ""}
+      tossClientKey={tossClientKey()}
       customerKey={workspaceCustomerKey(access.workspace.id)}
       cardNotice={parseCardNotice(searchParams?.card)}
     />

@@ -18,8 +18,17 @@ function secretKey() {
   return key;
 }
 
+/**
+ * 인증창을 여는 클라이언트 키. 공개되는 값이지만 서버 컴포넌트에서 읽어
+ * props로 내려 주므로 NEXT_PUBLIC_ 접두어가 필수는 아닙니다.
+ * TOSS_CLIENT_KEY를 먼저 보고, 없으면 NEXT_PUBLIC_ 쪽을 씁니다.
+ */
+export function tossClientKey() {
+  return process.env.TOSS_CLIENT_KEY || process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY || "";
+}
+
 export function isTossConfigured() {
-  return Boolean(process.env.TOSS_SECRET_KEY && process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY);
+  return Boolean(process.env.TOSS_SECRET_KEY && tossClientKey());
 }
 
 // 토스 customerKey. 워크스페이스당 하나로 고정해, 돌아온 리다이렉트가
