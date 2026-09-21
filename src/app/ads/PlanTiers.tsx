@@ -29,13 +29,13 @@ type Tier = {
 };
 
 // Mirrors the real plan ladder (src/lib/billing/plans.ts + homeCopy pricing):
-// Lite 59만원/200건, Basic 99만원/500건,
-// Pro 179만원/1,000건, Enterprise 별도 협의/2,000건+.
+// Lite 79만원/300건, Basic 119만원/500건,
+// Pro 199만원/1,000건, Enterprise 별도 협의/2,000건+.
 const tiers: Tier[] = [
   {
     name: "Lite",
-    price: "월 59만원",
-    volume: "월 상담 200건",
+    price: "월 79만원",
+    volume: "월 상담 300건",
     badge: "추천",
     pop: true,
     features: [
@@ -48,7 +48,7 @@ const tiers: Tier[] = [
   },
   {
     name: "Basic",
-    price: "월 99만원",
+    price: "월 119만원",
     volume: "월 상담 500건",
     features: [
       "Lite 전체 포함",
@@ -59,7 +59,7 @@ const tiers: Tier[] = [
   },
   {
     name: "Pro",
-    price: "월 179만원",
+    price: "월 199만원",
     volume: "월 상담 1,000건",
     features: [
       "전화 · 채팅 · 게시판 · 이메일 응대",
