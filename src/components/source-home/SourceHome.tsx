@@ -609,7 +609,6 @@ function FeatureMatrix() {
               {columns.map((column, index) => (
                 <th className={index === bestIndex ? "best" : ""} key={column}>
                   {column}
-                  {index === bestIndex ? <span className="ftm-limited">7월 한정 · ~07.31</span> : null}
                 </th>
               ))}
             </tr>
@@ -656,7 +655,7 @@ function LandingPricing() {
               <div className="tier-head">
                 {badge ? (
                   <div className="tier-benefit" aria-label={`${badge} ${deadline ?? ""}`.trim()}>
-                    7월 한정 도입 혜택 {deadline ? <span>· {deadline}</span> : null}
+                    {badge} {deadline ? <span>· {deadline}</span> : null}
                   </div>
                 ) : null}
                 <div>
@@ -695,7 +694,7 @@ function LandingPricing() {
           </button>
         </div>
         {showMatrix ? <FeatureMatrix /> : null}
-        <p className="t-sm" style={{ textAlign: "center", marginTop: 24 }}>{homeCopy.pricing.note}</p>
+        {pricing.note ? <p className="t-sm" style={{ textAlign: "center", marginTop: 24 }}>{pricing.note}</p> : null}
       </div>
     </section>
   );
