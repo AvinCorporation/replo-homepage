@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { getAuthCallbackUrl } from "@/lib/auth/redirect";
+import { getAuthCallbackUrl, rememberLoginNextPath } from "@/lib/auth/redirect";
 import { createClient } from "@/lib/supabase/client";
 
-export function GoogleAuthButton({ label }: { label: string }) {
+export function GoogleAuthButton({
+  label,
+  next,
+}: {
+  label: string;
+  // 로그인 후 돌아갈 내부 경로. 요금제 신청처럼 목적지가 있는 로그인에 씁니다.
+  next?: string | null;
+}) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -13,6 +20,8 @@ export function GoogleAuthButton({ label }: { label: string }) {
     setMessage("");
 
     try {
+      // 로그인 후 돌아갈 경로는 쿠키로 넘깁니다(콜백 URL 허용 목록 유지).
+      rememberLoginNextPath(next);
       const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",

@@ -57,6 +57,36 @@ const BILLING_ERRORS: Record<string, { status: number; error: string }> = {
     status: 409,
     error: "카드 등록 요청이 만료되었거나 유효하지 않습니다. 다시 시작해 주세요.",
   },
+  // 결제 환경변수가 비어 있거나 서로 맞지 않는 상태. 고객 화면에는 같은 문구를
+  // 보여 주지만, 코드로 어떤 설정이 잘못됐는지 구분할 수 있게 분리해 둡니다.
+  BILLING_ENVIRONMENT_MISMATCH: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_DATABASE_MISMATCH: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_KEY_ENVIRONMENT_MISMATCH: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_SITE_INVALID: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_ENCRYPTION_NOT_CONFIGURED: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_TEST_KEYS_CHARGES_FORBIDDEN: {
+    status: 503,
+    error: "결제 설정이 완료되지 않았습니다. 잠시 후 다시 시도하거나 담당 매니저에게 문의해 주세요.",
+  },
+  BILLING_DATABASE_ERROR: {
+    status: 503,
+    error: "결제 정보를 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+  },
   BILLING_REGISTRATION_FAILED: {
     status: 422,
     error: "카드 등록을 완료하지 못했습니다. 기존 결제수단은 유지됩니다.",

@@ -44,6 +44,8 @@ type PlanUsage = {
 type Props = {
   canManage: boolean;
   initialSection: MypageSection;
+  // 홈페이지 요금제에서 플랜을 고르고 들어온 경우 그 플랜의 신청 창을 바로 엽니다.
+  requestedPlanId?: SelectablePlanId | null;
   loginEmail: string;
   roleLabel: string;
   customer: {
@@ -193,13 +195,18 @@ export function MypageSettings(props: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [changingPlanId, setChangingPlanId] = useState<SelectablePlanId | null>(null);
-  const [pendingPlanId, setPendingPlanId] = useState<SelectablePlanId | null>(null);
+  const [pendingPlanId, setPendingPlanId] = useState<SelectablePlanId | null>(
+    // 이미 쓰고 있는 플랜이거나 변경 권한이 없으면 창을 열지 않습니다.
+    props.canManage && props.requestedPlanId && props.requestedPlanId !== props.plan.planId
+      ? props.requestedPlanId
+      : null,
+  );
 
-  // 카드 등록 결과는 한 번만 보여 주고 주소에서 지웁니다.
+  // 카드 등록 결과와 요금제 선택값은 한 번만 쓰고 주소에서 지웁니다.
   useEffect(() => {
-    if (!props.cardNotice || typeof window === "undefined") return;
+    if ((!props.cardNotice && !props.requestedPlanId) || typeof window === "undefined") return;
     window.history.replaceState(window.history.state, "", `/mypage?section=${props.initialSection}`);
-  }, [props.cardNotice, props.initialSection]);
+  }, [props.cardNotice, props.initialSection, props.requestedPlanId]);
 
   const title = sectionTitles[active];
   const usage = props.usage;
@@ -327,7 +334,7 @@ export function MypageSettings(props: Props) {
 
   return (
     <div className="mypage-shell">
-      <PortalRail active="account" workspaceName={profile.brandName} />
+      <PortalRail active={active === "plan" ? "billing" : "account"} workspaceName={profile.brandName} />
 
       <aside className="mypage-menu">
         <Link href="/dashboard" className="mypage-back">

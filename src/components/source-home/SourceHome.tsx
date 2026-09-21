@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GoogleAuthButton } from "../auth/GoogleAuthButton";
 import { homeCopy } from "../../content/homeCopy";
 import { createClient } from "../../lib/supabase/client";
+import { sanitizeNextPath } from "../../lib/auth/redirect";
 import { shouldShowPortalLogin } from "../../lib/deployment/host";
 
 const PATHS: Record<string, string> = {
@@ -79,10 +80,13 @@ function ButtonLink({
 
 function LoginModal({
   authError,
+  next,
   open,
   onClose,
 }: {
   authError: boolean;
+  // 로그인 후 돌아갈 내부 경로(예: 요금제 신청 화면).
+  next: string | null;
   open: boolean;
   onClose: () => void;
 }) {
@@ -127,7 +131,7 @@ function LoginModal({
           </p>
         ) : null}
         <div className="home-auth-action">
-          <GoogleAuthButton label="Google로 계속하기" />
+          <GoogleAuthButton label="Google로 계속하기" next={next} />
         </div>
         <small>처음 로그인하면 회사와 브랜드 정보를 등록합니다.</small>
       </div>
@@ -650,7 +654,7 @@ function LandingPricing() {
           {pricing.description ? <p className="t-lead" style={{ marginTop: 16 }}>{pricing.description}</p> : null}
         </div>
         <div className="pricing4">
-          {pricing.plans.map(({ en, ko, price, originalPrice, volume, best, badge, deadline, description, features }) => (
+          {pricing.plans.map(({ en, planId, ko, price, originalPrice, volume, best, badge, deadline, description, features }) => (
             <div className={`tier${best ? " best" : ""}`} key={en}>
               <div className="tier-head">
                 {badge ? (
@@ -675,7 +679,16 @@ function LandingPricing() {
               <ul className="tier-feats">
                 {features.map((feature) => <li key={feature}><Icon name="check" size={15} stroke={2.3} />{feature}</li>)}
               </ul>
-              <ButtonLink size="sm" variant={best ? "primary" : "ghost"} className="btn-block tier-cta">
+              <ButtonLink
+                size="sm"
+                variant={best ? "primary" : "ghost"}
+                className="btn-block tier-cta"
+                href={
+                  en === "Enterprise"
+                    ? pricing.enterpriseCtaHref
+                    : `${pricing.planCtaHref}${planId}`
+                }
+              >
                 {en === "Enterprise" ? pricing.enterpriseCta : best ? pricing.launchCta : pricing.standardCta}
               </ButtonLink>
             </div>
@@ -694,6 +707,11 @@ function LandingPricing() {
           </button>
         </div>
         {showMatrix ? <FeatureMatrix /> : null}
+        <div className="matrix-toggle">
+          <ButtonLink href={pricing.consultCtaHref} size="sm" variant="ghost">
+            {pricing.consultCta}
+          </ButtonLink>
+        </div>
         {pricing.note ? <p className="t-sm" style={{ textAlign: "center", marginTop: 24 }}>{pricing.note}</p> : null}
       </div>
     </section>
@@ -784,12 +802,16 @@ export function SourceHome() {
   const [showPortalLogin, setShowPortalLogin] = useState(false);
   const [authError, setAuthError] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  // `/mypage?section=plan`처럼 로그인이 필요한 화면에서 넘어온 경우의 복귀 경로.
+  const [nextPath, setNextPath] = useState<string | null>(null);
 
   useEffect(() => {
     setShowPortalLogin(shouldShowPortalLogin(window.location.hostname));
 
     const params = new URLSearchParams(window.location.search);
     const wantLogin = params.get("login") === "1";
+    const requestedNext = sanitizeNextPath(params.get("next"));
+    if (requestedNext) setNextPath(requestedNext);
     if (params.get("error") === "auth_failed") setAuthError(true);
 
     const supabase = createClient();
@@ -800,7 +822,9 @@ export function SourceHome() {
       if (!active) return;
       const isAuthed = Boolean(data.session);
       setAuthenticated(isAuthed);
-      if (wantLogin && !isAuthed) setLoginOpen(true);
+      // 이미 로그인한 상태로 로그인 링크를 타고 왔다면 목적지로 바로 보냅니다.
+      if (wantLogin && isAuthed && requestedNext) router.replace(requestedNext);
+      else if (wantLogin && !isAuthed) setLoginOpen(true);
       setAuthReady(true);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -810,7 +834,7 @@ export function SourceHome() {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   async function handleLogout() {
     await createClient().auth.signOut();
@@ -844,7 +868,12 @@ export function SourceHome() {
         <CtaSection />
         <Footer />
       </div>
-      <LoginModal authError={authError} open={loginOpen} onClose={() => setLoginOpen(false)} />
+      <LoginModal
+        authError={authError}
+        next={nextPath}
+        open={loginOpen}
+        onClose={() => setLoginOpen(false)}
+      />
     </div>
   );
 }
