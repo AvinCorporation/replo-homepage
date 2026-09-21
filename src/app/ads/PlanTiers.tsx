@@ -29,23 +29,21 @@ type Tier = {
 };
 
 // Mirrors the real plan ladder (src/lib/billing/plans.ts + homeCopy pricing):
-// Starter 59만원(7월 한정, 원가 99만원)/200건, Basic 99만원/500건,
+// Lite 59만원/200건, Basic 99만원/500건,
 // Pro 179만원/1,000건, Enterprise 별도 협의/2,000건+.
 const tiers: Tier[] = [
   {
-    name: "Starter",
+    name: "Lite",
     price: "월 59만원",
-    orig: "월 99만원",
-    note: "7월 한정",
     volume: "월 상담 200건",
-    badge: "진행중",
+    badge: "추천",
     pop: true,
     features: [
       "상담 응대 (채팅 · 게시판 · 이메일)",
       "반복 문의 자동화",
       "챗봇 구조설계",
       "FAQ · SOP 정리",
-      "월간 운영 리포트",
+      "운영 대시보드 제공",
     ],
   },
   {
@@ -53,10 +51,10 @@ const tiers: Tier[] = [
     price: "월 99만원",
     volume: "월 상담 500건",
     features: [
-      "Starter 전체 포함",
+      "Lite 전체 포함",
       "응대 가이드 제공",
       "교환 · 환불 · 클레임 운영",
-      "격주 운영 리포트",
+      "운영 인사이트 분석",
     ],
   },
   {
@@ -67,7 +65,7 @@ const tiers: Tier[] = [
       "전화 · 채팅 · 게시판 · 이메일 응대",
       "CS 정책 설계 · 응대 가이드",
       "실시간 운영 대시보드",
-      "주간 운영 리포트",
+      "VOC 분석 · 개선 제안",
     ],
   },
   {
