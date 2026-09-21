@@ -1,0 +1,18 @@
+# Copy values into the development/Preview secret store, never commit real values.
+BILLING_ENVIRONMENT=test
+BILLING_CHARGES_ENABLED=false
+BILLING_ALLOW_TEST_KEYS_IN_PRODUCTION=false
+BILLING_SITE_URL=http://localhost:3000
+BILLING_TEST_SUPABASE_URL=
+BILLING_PRODUCTION_SUPABASE_URL=
+TOSS_CLIENT_KEY=
+TOSS_SECRET_KEY=
+BILLING_ENCRYPTION_KEY_VERSION=
+BILLING_ENCRYPTION_KEYS={}
+BILLING_CRON_SECRET=
+# Existing project auth variables, all must point to the development project:
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+# billing_runtime_settings.charges_enabled and billing_profiles.auto_charge_enabled
+# also default to false. Enable only after the relevant release/test gates.

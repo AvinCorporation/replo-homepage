@@ -1,0 +1,211 @@
+import "server-only";
+import { randomBytes, randomUUID } from "node:crypto";
+import { billingAccess, billingAdmin, rpc } from "./server";
+import { billingConfig } from "./config";
+import { encryptCredential, stateDigest } from "./crypto";
+import {
+  confirmedFirstChargeDate,
+  invoiceAmount,
+  parsePolicy,
+} from "./domain";
+import { TossClient } from "./client";
+import { sameJsonValue } from "./json";
+import { planChangePolicy } from "../planChanges";
+export async function registrationConditions(workspaceId: string) {
+  const admin = billingAdmin();
+  const { data: subscription, error } = await admin
+    .from("subscriptions")
+    .select(
+      "id,monthly_fee,billing_policy,next_billing_date,billing_anchor_day,auto_charge_start_date,first_period_start,enrollment_confirmed_at",
+    )
+    .eq("workspace_id", workspaceId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !subscription)
+    throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+
+  let monthlyFee = subscription.monthly_fee;
+  let firstChargeDate = subscription.next_billing_date;
+  let billingAnchorDay = subscription.billing_anchor_day;
+  let policyValue = subscription.billing_policy;
+
+  if (!subscription.enrollment_confirmed_at) {
+    const { data: pending, error: pendingError } = await admin
+      .from("subscription_plan_changes")
+      .select("to_monthly_fee,effective_on,billing_policy_snapshot")
+      .eq("subscription_id", subscription.id)
+      .eq("status", "scheduled")
+      .maybeSingle();
+    if (pendingError) throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+    if (pending) {
+      monthlyFee = pending.to_monthly_fee;
+      firstChargeDate = pending.effective_on;
+      billingAnchorDay = 1;
+      policyValue = pending.billing_policy_snapshot ?? planChangePolicy();
+    } else if (
+      !subscription.auto_charge_start_date ||
+      !subscription.first_period_start ||
+      !billingAnchorDay
+    ) {
+      throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+    }
+  } else if (
+    !subscription.auto_charge_start_date ||
+    !subscription.first_period_start ||
+    !billingAnchorDay
+  ) {
+    throw new Error("BILLING_POLICY_NOT_CONFIRMED");
+  }
+
+  const policy = parsePolicy(policyValue);
+  const conditions = {
+    policy,
+    amount: invoiceAmount(monthlyFee, policy.vat),
+    cycle: "monthly",
+    firstChargeDate: confirmedFirstChargeDate(
+      policy.firstCharge,
+      firstChargeDate,
+    ),
+    billingAnchorDay,
+  };
+  return conditions;
+}
+export async function beginRegistration(
+  workspaceId: string,
+  userId: string,
+  consent: unknown,
+) {
+  const conditions = await registrationConditions(workspaceId);
+  // Client must affirm the exact server-generated terms, including fee/date.
+  if (!sameJsonValue(consent, conditions))
+    throw new Error("BILLING_CONSENT_CHANGED");
+  const state = randomBytes(32).toString("base64url");
+  const id = await rpc<string>("billing_begin_registration", {
+    p_workspace: workspaceId,
+    p_user: userId,
+    p_state_hash: stateDigest(state),
+    p_policy: conditions.policy,
+    p_conditions: conditions,
+  });
+  const { data: profile, error } = await billingAdmin()
+    .from("billing_profiles")
+    .select("customer_key")
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (error || !profile) throw new Error("BILLING_DATABASE_ERROR");
+  const config = billingConfig();
+  return {
+    clientKey: config.clientKey,
+    customerKey: profile.customer_key,
+    successUrl: `${config.site}/mypage/billing/callback?session=${id}&state=${state}`,
+    failUrl: `${config.site}/mypage/billing/callback?session=${id}&state=${state}`,
+  };
+}
+export async function completeRegistration(input: {
+  session: string;
+  state: string;
+  authKey: string;
+  customerKey: string;
+}) {
+  const admin = billingAdmin();
+  const { data: session, error } = await admin
+    .from("billing_registration_sessions")
+    .select("id,workspace_id,initiated_by,expires_at,status,state_hash")
+    .eq("id", input.session)
+    .maybeSingle();
+  if (
+    error ||
+    !session ||
+    session.state_hash !== stateDigest(input.state) ||
+    session.status !== "pending" ||
+    session.expires_at < new Date().toISOString()
+  )
+    throw new Error("INVALID_REGISTRATION");
+  const access = await billingAccess(session.workspace_id, true);
+  if (session.initiated_by !== access.userId)
+    throw new Error("BILLING_FORBIDDEN");
+  const { data: profile, error: profileError } = await admin
+    .from("billing_profiles")
+    .select("customer_key")
+    .eq("workspace_id", session.workspace_id)
+    .single();
+  if (profileError || profile?.customer_key !== input.customerKey)
+    throw new Error("INVALID_REGISTRATION");
+  const { data: claimed, error: claimError } = await admin
+    .from("billing_registration_sessions")
+    .update({ status: "processing" })
+    .eq("id", session.id)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .select("id")
+    .maybeSingle();
+  if (claimError || !claimed) throw new Error("REGISTRATION_ALREADY_USED");
+  let issuedBillingKey: string | null = null;
+  let toss: TossClient | null = null;
+  try {
+    const config = billingConfig();
+    toss = new TossClient(config.secretKey);
+    const billing = await toss.issue(
+      input.authKey,
+      profile.customer_key,
+      session.id,
+    );
+    if (billing.billingKey) issuedBillingKey = billing.billingKey;
+    if (
+      billing.customerKey !== profile.customer_key ||
+      !billing.billingKey ||
+      !billing.card
+    )
+      throw new Error("INVALID_TOSS_BILLING");
+    const methodId = randomUUID();
+    const credential = encryptCredential(
+      billing.billingKey,
+      `${session.workspace_id}:${methodId}`,
+      config.keyRing,
+    );
+    // Keep at most the last four visible digits even if provider masking changes.
+    const lastFour =
+      billing.card.number?.slice(-4).replace(/[^0-9]/g, "") ?? "";
+    await rpc("billing_complete_registration", {
+      p_session: session.id,
+      p_user: access.userId,
+      p_method: methodId,
+      p_encrypted: credential.encrypted_billing_key,
+      p_version: credential.encryption_key_version,
+      p_card: {
+        maskedNumber: `**** **** **** ${lastFour || "****"}`,
+        issuerCode: billing.card.issuerCode,
+        cardType: billing.card.cardType,
+        ownerType: billing.card.ownerType,
+      },
+    });
+  } catch (error) {
+    const invalidProviderResponse =
+      error instanceof Error && error.message === "INVALID_TOSS_BILLING";
+    // If Toss issued a new key but the DB transaction failed, remove only that
+    // unpersisted key. Never revoke the prior card or retry an authKey.
+    if (issuedBillingKey && toss) {
+      try {
+        await toss.revokeBillingKey(issuedBillingKey);
+      } catch {
+        console.warn("billing.orphan_billing_key_cleanup_failed", {
+          registration_session_id: session.id,
+          workspace_id: session.workspace_id,
+        });
+      }
+    }
+    await admin
+      .from("billing_registration_sessions")
+      .update({ status: "failed" })
+      .eq("id", session.id)
+      .eq("status", "processing");
+    throw new Error(
+      invalidProviderResponse
+        ? "BILLING_PROVIDER_RESPONSE_INVALID"
+        : issuedBillingKey
+          ? "BILLING_DATABASE_ERROR"
+          : "BILLING_REGISTRATION_FAILED",
+    );
+  }
+}
