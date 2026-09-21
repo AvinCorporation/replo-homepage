@@ -7,7 +7,7 @@ import { MetaPixel } from "@/components/meta/MetaPixel";
 
 const siteTitle = "리플로 Replo | CS 운영 대행 · 고객센터 자동화 · CX 운영 설계";
 const siteDescription =
-  "CS 운영 대행부터 FAQ, 응대 기준, 반복 문의 자동화, VOC 리포트까지 고객센터 운영 구조를 함께 설계하고 운영합니다.";
+  "CS 운영 대행부터 FAQ, 응대 기준, 반복 문의 자동화, 운영 대시보드까지 고객센터 운영 구조를 함께 설계하고 운영합니다.";
 
 export const metadata = {
   metadataBase: new URL("https://replo.kr"),

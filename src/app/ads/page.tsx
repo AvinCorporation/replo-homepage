@@ -10,11 +10,11 @@ import { PlanTiers } from "./PlanTiers";
 export const metadata: Metadata = {
   title: "리플로 Replo | CS직원 뽑기 전, 월 59만원 CS 운영대행",
   description:
-    "CS직원 뽑기 전, 월 59만원으로 CS 운영대행부터 시작하세요. 상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지 Replo가 대신 설계하고 운영합니다. 7월 한정 · 무료 운영 진단.",
+    "CS직원 뽑기 전, 월 59만원으로 CS 운영대행부터 시작하세요. 상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지 Replo가 대신 설계하고 운영합니다. 무료 운영 진단.",
   openGraph: {
     title: "CS직원 뽑기 전, 월 59만원으로 CS 운영대행부터",
     description:
-      "상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지. 7월 한정 월 59만원. 무료 운영 진단 받기.",
+      "상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지. 월 59만원. 무료 운영 진단 받기.",
   },
 };
 
@@ -1032,7 +1032,7 @@ const flowSteps = [
   { icon: IconRepeat, title: "반복 문의 자동화", desc: "자주 묻는 문의를 자동으로 처리하도록 구조화합니다." },
   { icon: IconFlow, title: "챗봇 구조설계", desc: "고객 여정에 맞춘 챗봇 플로우를 설계합니다." },
   { icon: IconDoc, title: "FAQ · SOP 정리", desc: "응대 기준과 상담 스크립트를 문서로 정리합니다." },
-  { icon: IconChart, title: "운영 리포트", desc: "문의 현황과 반복 이슈를 리포트로 제공합니다." },
+  { icon: IconChart, title: "운영 대시보드", desc: "문의 현황과 반복 이슈를 대시보드로 확인합니다." },
 ];
 
 const included = [
@@ -1040,7 +1040,7 @@ const included = [
   { icon: IconFlow, title: "자동화 구조 설계", desc: "반복 문의의 흐름과 운영 구조를 정리합니다." },
   { icon: IconBot, title: "챗봇 플로우 설계", desc: "문의 유형에 맞는 응대 시나리오를 설계합니다." },
   { icon: IconDoc, title: "FAQ / SOP 정리", desc: "자주 묻는 질문과 운영 기준을 문서화합니다." },
-  { icon: IconChart, title: "운영 리포트", desc: "상담 데이터 분석과 개선 포인트를 제공합니다." },
+  { icon: IconChart, title: "운영 대시보드", desc: "상담 데이터와 개선 포인트를 대시보드로 제공합니다." },
 ];
 
 const recommended = [
@@ -1071,7 +1071,7 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
         {HeroLines}
 
         <div className="ads-hero-inner">
-          <span className="ads-badge">{IconSpark}7월 한정 · 리플로 런칭 혜택</span>
+          <span className="ads-badge">{IconSpark}CS 운영대행 구독 서비스</span>
           <h1 id="ads-hero-title">
             <span className="price">월 59만원</span>으로 시작하는<br />
             CS 운영 대행 패키지
@@ -1122,7 +1122,7 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
               <li>{IconCheck}상담 응대 포함</li>
               <li>{IconCheck}운영 기준 함께 정리</li>
               <li>{IconCheck}월 단위 유연 운영</li>
-              <li>{IconCheck}<b>7월 한정 월 59만원</b></li>
+              <li>{IconCheck}<b>월 59만원부터 시작</b></li>
             </ul>
           </div>
           <div className="ads-vs" aria-hidden="true">VS</div>
@@ -1154,13 +1154,13 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
 
       {/* 5. Price includes */}
       <section className="ads-band" aria-labelledby="ads-price-title">
-        <p className="ads-eyebrow">7월 한정 런칭 혜택</p>
+        <p className="ads-eyebrow">라이트 플랜</p>
         <h2 className="ads-h2" id="ads-price-title">
           <span className="hl">월 59만원</span>에<br />포함되는 것
         </h2>
         <div className="ads-inccard">
-          <div className="ads-price-offer" aria-label="7월 한정 월 59만원 도입 혜택">
-            <span className="label">{IconSpark}7월 한정 런칭 혜택</span>
+          <div className="ads-price-offer" aria-label="라이트 플랜 월 59만원">
+            <span className="label">{IconSpark}라이트 플랜</span>
             <div className="price"><span className="month">월</span><strong className="num">59</strong><span className="unit">만원</span></div>
             <div className="meta">
               <span>{IconHeadset}월 상담 200건 기준</span>
