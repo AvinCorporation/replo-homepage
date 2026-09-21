@@ -12,7 +12,7 @@ const businessTypeOptions = [
 
 const monthlyInquiriesOptions = [
   "50건 이하",
-  "200건 이하",
+  "300건 이하",
   "500건 이하",
   "1,000건 이하",
   "1,000건 이상",

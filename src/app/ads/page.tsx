@@ -8,13 +8,13 @@ import { PlanTiers } from "./PlanTiers";
 // attribution is preserved end-to-end.
 
 export const metadata: Metadata = {
-  title: "리플로 Replo | CS직원 뽑기 전, 월 59만원 CS 운영대행",
+  title: "리플로 Replo | CS직원 뽑기 전, 월 79만원 CS 운영대행",
   description:
-    "CS직원 뽑기 전, 월 59만원으로 CS 운영대행부터 시작하세요. 상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지 Replo가 대신 설계하고 운영합니다. 무료 운영 진단.",
+    "CS직원 뽑기 전, 월 79만원으로 CS 운영대행부터 시작하세요. 상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지 Replo가 대신 설계하고 운영합니다. 무료 운영 진단.",
   openGraph: {
-    title: "CS직원 뽑기 전, 월 59만원으로 CS 운영대행부터",
+    title: "CS직원 뽑기 전, 월 79만원으로 CS 운영대행부터",
     description:
-      "상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지. 월 59만원. 무료 운영 진단 받기.",
+      "상담 응대 · 자동화 · 챗봇 구조설계 · 운영 기준 정리까지. 월 79만원. 무료 운영 진단 받기.",
   },
 };
 
@@ -1073,7 +1073,7 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
         <div className="ads-hero-inner">
           <span className="ads-badge">{IconSpark}CS 운영대행 구독 서비스</span>
           <h1 id="ads-hero-title">
-            <span className="price">월 59만원</span>으로 시작하는<br />
+            <span className="price">월 79만원</span>으로 시작하는<br />
             CS 운영 대행 패키지
           </h1>
           <p className="ads-sub">상담 응대 · 자동화 설계 · 챗봇 구조 설계 · 운영 기준 정리까지</p>
@@ -1122,7 +1122,7 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
               <li>{IconCheck}상담 응대 포함</li>
               <li>{IconCheck}운영 기준 함께 정리</li>
               <li>{IconCheck}월 단위 유연 운영</li>
-              <li>{IconCheck}<b>월 59만원부터 시작</b></li>
+              <li>{IconCheck}<b>월 79만원부터 시작</b></li>
             </ul>
           </div>
           <div className="ads-vs" aria-hidden="true">VS</div>
@@ -1156,14 +1156,14 @@ export default function AdsLandingPage({ searchParams }: { searchParams: SearchP
       <section className="ads-band" aria-labelledby="ads-price-title">
         <p className="ads-eyebrow">라이트 플랜</p>
         <h2 className="ads-h2" id="ads-price-title">
-          <span className="hl">월 59만원</span>에<br />포함되는 것
+          <span className="hl">월 79만원</span>에<br />포함되는 것
         </h2>
         <div className="ads-inccard">
-          <div className="ads-price-offer" aria-label="라이트 플랜 월 59만원">
+          <div className="ads-price-offer" aria-label="라이트 플랜 월 79만원">
             <span className="label">{IconSpark}라이트 플랜</span>
             <div className="price"><span className="month">월</span><strong className="num">59</strong><span className="unit">만원</span></div>
             <div className="meta">
-              <span>{IconHeadset}월 상담 200건 기준</span>
+              <span>{IconHeadset}월 상담 300건 기준</span>
               <span>상담 응대 포함</span>
             </div>
           </div>

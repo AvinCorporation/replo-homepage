@@ -531,11 +531,11 @@ export function MypageSettings(props: Props) {
                     </div>
                     <div className="gauge-track">
                       <div className="gauge-fill" style={{ width: `${gaugeWidth}%` }} />
-                      <i className="gauge-tick" style={{ left: "20%" }} />
+                      <i className="gauge-tick" style={{ left: "30%" }} />
                       <i className="gauge-tick" style={{ left: "50%" }} />
                     </div>
                     <div className="gauge-scale">
-                      <span>라이트 · 200건</span>
+                      <span>라이트 · 300건</span>
                       <span>베이직 · 500건</span>
                       <span>프로 · 1,000건</span>
                     </div>
