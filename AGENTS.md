@@ -17,6 +17,8 @@ Preserve these routes unless a task explicitly changes them:
 - `/contatct/success`
 - `/api/diagnosis`
 
-Login, signup, onboarding, mypage, dashboard, billing, member, and integration features belong on the `dev` branch and must not be added to the production `main` branch.
+Login, signup, onboarding, mypage, dashboard, billing, member, and integration features now live on `main` and ship to production together with the public homepage. Keep them separate from the public marketing pages in code: the public pages must stay static-friendly and must not depend on authenticated app state.
+
+`main` is the production branch. Every merge into `main` deploys to `replo.kr` automatically, so run `next build` and verify the change before merging.
 
 Never commit `.env`, `.env.local`, `.env.*.local`, Supabase service role keys, webhook secrets, or real customer data. Do not collect raw card data in public forms.
