@@ -60,6 +60,8 @@ The diagnosis form should be:
 ## Public Homepage Rules
 The public homepage visual design must remain the Claude-designed bundle. Hide or de-emphasize public-facing login buttons unless explicitly instructed. Main public CTAs should lead to `/contact`.
 
+Pricing plan cards are the one exception: their CTA is the paid signup path and must link to `/mypage?section=plan&plan=<planId>`, which is the payment route a PG merchant review follows (요금제 → 요금제 신청 → 카드 등록). The Enterprise card and the secondary CTA under the pricing grid still lead to `/contact`. This is a routing exception only — do not change the pricing section's visual design.
+
 Do not change the original hero copy or nav labels without explicit instruction.
 
 ## Accessibility Basics

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
+import { loginPathWithNext } from "@/lib/auth/redirect";
 import { loadPaymentMethods } from "@/lib/billing/paymentMethod";
+import { findSelectablePlan, selfServicePlanIds, type SelectablePlanId } from "@/lib/billing/plans";
 import { loadPlanOverview } from "@/lib/billing/planOverview";
 import { seoulToday } from "@/lib/billing/toss/domain";
 import { getCurrentWorkspaceAccess } from "@/lib/workspaces/access";
@@ -38,18 +40,41 @@ function parseCardNotice(value: string | string[] | undefined) {
   return (candidate && cardNotices[candidate]) || null;
 }
 
+// 홈페이지 요금제에서 `?plan=Starter`로 들어오면 해당 요금제 신청 창을 바로 엽니다.
+function parseRequestedPlan(value: string | string[] | undefined): SelectablePlanId | null {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  const plan = findSelectablePlan(candidate);
+  return plan && selfServicePlanIds.includes(plan.id) ? plan.id : null;
+}
+
+// 로그인·온보딩을 거친 뒤에도 원래 보려던 마이페이지 화면으로 돌아오게 합니다.
+function currentPath(searchParams?: Record<string, string | string[] | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(searchParams ?? {}).forEach(([key, value]) => {
+    const single = Array.isArray(value) ? value[0] : value;
+    if (single) query.set(key, single);
+  });
+  const suffix = query.toString();
+  return suffix ? `/mypage?${suffix}` : "/mypage";
+}
+
 export default async function MyPage({
   searchParams,
 }: {
-  searchParams?: { section?: string | string[]; card?: string | string[] };
+  searchParams?: {
+    section?: string | string[];
+    card?: string | string[];
+    plan?: string | string[];
+  };
 }) {
+  const destination = currentPath(searchParams);
   const claims = await getSessionClaims();
-  if (!claims) redirect("/login");
+  if (!claims) redirect(loginPathWithNext(destination));
 
   const access = await getCurrentWorkspaceAccess();
-  if (!access) redirect("/onboarding");
+  if (!access) redirect(`/onboarding?next=${encodeURIComponent(destination)}`);
   const loginEmail = claims.email;
-  if (!loginEmail) redirect("/login");
+  if (!loginEmail) redirect(loginPathWithNext(destination));
 
   const supabase = await createClient();
 
@@ -67,10 +92,13 @@ export default async function MyPage({
 
   const customer = access.workspace;
 
+  const requestedPlanId = parseRequestedPlan(searchParams?.plan);
+
   return (
     <MypageSettings
       canManage={access.membership.role === "owner" || access.membership.role === "admin"}
-      initialSection={parseSection(searchParams?.section)}
+      initialSection={requestedPlanId ? "plan" : parseSection(searchParams?.section)}
+      requestedPlanId={requestedPlanId}
       loginEmail={loginEmail}
       roleLabel={roleLabels[access.membership.role] ?? access.membership.role}
       customer={{

@@ -265,12 +265,19 @@ export const homeCopy = {
     launchCta: "이 플랜으로 시작",
     standardCta: "이 플랜으로 시작",
     enterpriseCta: "영업팀 문의",
+    // 셀프서비스 플랜(라이트·베이직·프로)은 마이페이지 요금제 신청 화면으로 보냅니다.
+    // `plan` 값은 src/lib/billing/plans.ts의 plan id와 같아야 합니다.
+    planCtaHref: "/mypage?section=plan&plan=",
+    enterpriseCtaHref: "/contact",
+    consultCta: "먼저 무료 운영 진단 받기",
+    consultCtaHref: "/contact",
     detailOpen: "플랜별 기능 전체 비교",
     detailClose: "기능 비교표 접기",
-    note: "",
+    note: "모든 금액은 부가세 별도이며, 신청한 요금제는 다음 달 1일부터 등록한 카드로 매월 자동결제됩니다. 3개월 의무 사용 후에는 월 단위로 이용하며, 해지·환불은 마이페이지 문의하기로 요청할 수 있습니다.",
     plans: [
       {
         en: "Lite",
+        planId: "Starter",
         ko: "라이트",
         price: "₩790,000",
         originalPrice: "",
@@ -283,6 +290,7 @@ export const homeCopy = {
       },
       {
         en: "Basic",
+        planId: "Basic",
         ko: "베이직",
         price: "₩1,190,000",
         originalPrice: "",
@@ -295,6 +303,7 @@ export const homeCopy = {
       },
       {
         en: "Pro",
+        planId: "Pro",
         ko: "프로",
         price: "₩1,990,000",
         originalPrice: "",
@@ -307,6 +316,7 @@ export const homeCopy = {
       },
       {
         en: "Enterprise",
+        planId: "Enterprise",
         ko: "엔터프라이즈",
         price: "별도 협의",
         originalPrice: "",

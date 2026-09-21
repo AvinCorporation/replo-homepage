@@ -8,6 +8,8 @@ The current diagnosis form direction is single-page dropdown-based, not multi-st
 
 Public homepage CTAs should route users toward `/contact`.
 
+한 가지 예외: 요금제 섹션(`#pricing-sec`)의 플랜 카드 CTA는 실제 결제 경로인 `/mypage?section=plan&plan=<planId>`로 연결합니다. PG(토스페이먼츠) 가맹점 심사에서 홈페이지 요금제 → 요금제 신청 → 카드 등록으로 이어지는 결제경로를 확인하기 때문에, 이 버튼을 `/contact`(무료 운영 진단)로 되돌리지 마세요. 엔터프라이즈 카드와 요금제 섹션 하단의 보조 CTA는 그대로 `/contact`로 둡니다.
+
 Preserve these routes unless a task explicitly changes them:
 
 - `/`

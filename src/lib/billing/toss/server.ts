@@ -53,6 +53,15 @@ export function checkOrigin(request: Request) {
 export function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : "";
   const response = billingErrorDetails(code);
+  // 5xx는 고객이 해결할 수 없는 상태입니다. 어떤 설정/처리에서 막혔는지 서버 로그로
+  // 남겨야 "요금제를 변경할 수 없다"는 문의를 추적할 수 있습니다.
+  if (response.status >= 500) {
+    console.error(
+      "Billing request failed:",
+      code || "UNKNOWN_BILLING_ERROR",
+      error instanceof Error ? error.stack : undefined,
+    );
+  }
   return Response.json(
     { code: response.code, error: response.error },
     {

@@ -2,6 +2,7 @@
 
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { sanitizeNextPath } from "@/lib/auth/redirect";
 import { trackMetaEvent } from "@/lib/meta/client";
 
 type OnboardingForm = {
@@ -42,6 +43,8 @@ function OnboardingContent() {
   const [form, setForm] = useState(initialForm);
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // 로그인 전에 보려던 화면(예: 요금제 신청)을 워크스페이스 생성 후까지 이어 갑니다.
+  const nextPath = sanitizeNextPath(searchParams.get("next"));
 
   useEffect(() => {
     const eventId = searchParams.get("event_id");
@@ -51,9 +54,11 @@ function OnboardingContent() {
       eventId,
       customData: { content_name: "google_auth" },
     }).finally(() => {
-      router.replace("/onboarding");
+      router.replace(
+        nextPath ? `/onboarding?next=${encodeURIComponent(nextPath)}` : "/onboarding",
+      );
     });
-  }, [router, searchParams]);
+  }, [nextPath, router, searchParams]);
 
   function updateField(field: keyof OnboardingForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -88,7 +93,7 @@ function OnboardingContent() {
         phone: form.phone,
       },
     });
-    router.replace("/dashboard");
+    router.replace(nextPath ?? "/dashboard");
     router.refresh();
   }
 
@@ -102,7 +107,8 @@ function OnboardingContent() {
         <p className="onboarding-step">워크스페이스 설정</p>
         <h1>회사와 브랜드 정보를 입력해 주세요.</h1>
         <p className="onboarding-description">
-          현재 런칭 준비 중입니다. 입력하신 정보는 워크스페이스 설정에 사용됩니다.
+          입력하신 정보는 워크스페이스 설정과 요금제 청구 정보로 사용됩니다.
+          워크스페이스를 만들면 바로 요금제를 신청하고 결제 카드를 등록할 수 있습니다.
         </p>
 
         <div className="onboarding-grid">

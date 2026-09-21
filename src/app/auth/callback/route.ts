@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { LOGIN_NEXT_COOKIE, sanitizeNextPath } from "@/lib/auth/redirect";
 import { syncProfileAndLegacyMembership } from "@/lib/workspaces/access";
 import { createMetaEventId } from "@/lib/meta/eventIds";
 import { sendMetaCapiEvent } from "@/lib/meta/server";
@@ -10,6 +11,15 @@ type CookieToSet = {
   value: string;
   options: CookieOptions;
 };
+
+function decodeCookieValue(value: string | undefined) {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
 
 function redirectWithCookies(
   url: string,
@@ -21,6 +31,8 @@ function redirectWithCookies(
   cookiesToSet.forEach(({ name, value, options }) => {
     response.cookies.set(name, value, options);
   });
+  // 복귀 경로는 이번 한 번만 씁니다.
+  response.cookies.set(LOGIN_NEXT_COOKIE, "", { path: "/", maxAge: 0 });
   Object.entries(responseHeaders).forEach(([name, value]) => {
     response.headers.set(name, value);
   });
@@ -41,6 +53,10 @@ export async function GET(request: Request) {
   }
 
   const cookieStore = await cookies();
+  // 로그인 전에 보려던 화면(예: 요금제 신청)으로 돌려보냅니다. 경로는 로그인 시작 시
+  // 심어 둔 쿠키에서 읽습니다.
+  const next = sanitizeNextPath(decodeCookieValue(cookieStore.get(LOGIN_NEXT_COOKIE)?.value));
+  const nextQuery = next ? `&next=${encodeURIComponent(next)}` : "";
   const cookiesToSet: CookieToSet[] = [];
   const responseHeaders: Record<string, string> = {};
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -98,7 +114,11 @@ export async function GET(request: Request) {
       });
     }
     return redirectWithCookies(
-      `${origin}${workspaceId ? "/dashboard" : `/onboarding?registered=1&event_id=${encodeURIComponent(eventId)}`}`,
+      `${origin}${
+        workspaceId
+          ? (next ?? "/dashboard")
+          : `/onboarding?registered=1&event_id=${encodeURIComponent(eventId)}${nextQuery}`
+      }`,
       cookiesToSet,
       responseHeaders,
     );
@@ -119,7 +139,11 @@ export async function GET(request: Request) {
       .maybeSingle();
 
     return redirectWithCookies(
-      `${origin}${membership?.workspace_id ? "/dashboard" : "/onboarding"}`,
+      `${origin}${
+        membership?.workspace_id
+          ? (next ?? "/dashboard")
+          : `/onboarding${next ? `?next=${encodeURIComponent(next)}` : ""}`
+      }`,
       cookiesToSet,
       responseHeaders,
     );

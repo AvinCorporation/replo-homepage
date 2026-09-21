@@ -1,7 +1,7 @@
 import Link from "next/link";
 import styles from "./PortalRail.module.css";
 
-export type PortalSection = "dashboard" | "reports" | "integrations" | "account";
+export type PortalSection = "dashboard" | "reports" | "integrations" | "billing" | "account";
 
 function NavIcon({ type }: { type: PortalSection }) {
   const paths = {
@@ -26,6 +26,12 @@ function NavIcon({ type }: { type: PortalSection }) {
         <path d="M8 12h8" />
         <path d="M12 8v8" />
         <rect x="3" y="3" width="18" height="18" rx="5" />
+      </>
+    ),
+    billing: (
+      <>
+        <rect x="3" y="6" width="18" height="12" rx="3" />
+        <path d="M3 10h18" />
       </>
     ),
     account: (
@@ -61,6 +67,8 @@ export function PortalRail({
   const items: Array<{ id: PortalSection; href: string; label: string }> = [
     { id: "dashboard", href: "/dashboard", label: "대시보드" },
     { id: "reports", href: "/dashboard/reports", label: "리포트" },
+    // 요금제 신청·결제 카드 등록은 대시보드에서 바로 갈 수 있어야 합니다.
+    { id: "billing", href: "/mypage?section=plan", label: "요금제" },
     { id: "account", href: "/mypage", label: "계정" },
   ];
 
