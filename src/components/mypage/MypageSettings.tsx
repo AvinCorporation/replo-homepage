@@ -29,6 +29,8 @@ type CurrentPlan = {
   currentPeriodEnd: string | null;
   scheduledPlanId: SelectablePlanId | null;
   status: string;
+  cancellationEffectiveOn: string | null;
+  cancellationCompleted: boolean;
 };
 
 type PlanUsage = {
@@ -66,6 +68,14 @@ type Props = {
   memberCount: number;
   paymentMethods: PaymentMethodView[];
   cardNotice: { tone: "success" | "error"; text: string } | null;
+  withdrawal: {
+    // 탈퇴하면 종료되는 워크스페이스가 있는지(= 마지막 소유자인 곳).
+    closesWorkspace: boolean;
+    // 탈퇴로 나가게 되는 워크스페이스 수.
+    workspaceCount: number;
+    // 탈퇴를 막아야 하는 사유. 없으면 바로 탈퇴할 수 있습니다.
+    blockedReason: string | null;
+  };
 };
 
 const sectionTitles: Record<MypageSection, [string, string]> = {
@@ -195,6 +205,10 @@ export function MypageSettings(props: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [changingPlanId, setChangingPlanId] = useState<SelectablePlanId | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawAgreed, setWithdrawAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [pendingPlanId, setPendingPlanId] = useState<SelectablePlanId | null>(
     // 이미 쓰고 있는 플랜이거나 변경 권한이 없으면 창을 열지 않습니다.
     props.canManage && props.requestedPlanId && props.requestedPlanId !== props.plan.planId
@@ -299,6 +313,62 @@ export function MypageSettings(props: Props) {
       setError("네트워크 연결을 확인해 주세요.");
     } finally {
       setChangingPlanId(null);
+    }
+  }
+
+  // 구독 해지 신청 / 철회. 이미 결제한 이용기간은 그대로 두고, 효력일부터 청구가
+  // 멈춥니다.
+  async function submitCancellation(revoke: boolean) {
+    setMessage("");
+    setError("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/mypage/subscription/cancel", {
+        method: revoke ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agreed: true }),
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok) setError(result.error || "요청을 처리하지 못했습니다.");
+      else {
+        setMessage(result.message || "요청을 처리했습니다.");
+        setCancelOpen(false);
+        router.refresh();
+      }
+    } catch {
+      setError("네트워크 연결을 확인해 주세요.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // 회원 탈퇴. 처리 후에는 세션을 정리하고 홈으로 보냅니다.
+  async function withdraw() {
+    setMessage("");
+    setError("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/mypage/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agreed: true }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { error?: string };
+      if (!response.ok) {
+        setError(result.error || "탈퇴를 처리하지 못했습니다.");
+        setWithdrawOpen(false);
+        return;
+      }
+      await createClient().auth.signOut();
+      router.replace("/account/withdrawn");
+      router.refresh();
+    } catch {
+      setError("네트워크 연결을 확인해 주세요.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -437,6 +507,48 @@ export function MypageSettings(props: Props) {
           </form>
         ) : null}
 
+        {active === "profile" ? (
+          <section className="mypage-card danger-zone">
+            <div className="mypage-card-head">
+              <div>
+                <h2>회원 탈퇴</h2>
+                <p>
+                  탈퇴하면 이 워크스페이스에서 나가고 이름·이메일 등 개인정보가 삭제됩니다.
+                  결제·세금 관련 기록은 관련 법령에 따라 보관합니다.
+                </p>
+              </div>
+            </div>
+            <ul className="danger-notes">
+              <li>{props.withdrawal.closesWorkspace
+                ? "마지막 소유자이므로 워크스페이스도 함께 종료되고 채널 연동이 해제됩니다."
+                : "워크스페이스와 팀의 데이터는 남은 멤버가 계속 이용합니다."}</li>
+              {props.withdrawal.workspaceCount > 1 ? (
+                <li>참여 중인 워크스페이스 {props.withdrawal.workspaceCount}곳에서 모두 나갑니다.</li>
+              ) : null}
+              <li>탈퇴 후에는 같은 계정으로 다시 로그인해도 이전 데이터를 볼 수 없습니다.</li>
+              <li>되돌릴 수 없습니다.</li>
+            </ul>
+            {props.withdrawal.blockedReason ? (
+              <p className="danger-blocked" role="status">{props.withdrawal.blockedReason}</p>
+            ) : null}
+            <div className="mypage-form-actions">
+              <button
+                type="button"
+                className="button-danger"
+                disabled={busy || Boolean(props.withdrawal.blockedReason)}
+                onClick={() => {
+                  setMessage("");
+                  setError("");
+                  setWithdrawAgreed(false);
+                  setWithdrawOpen(true);
+                }}
+              >
+                회원 탈퇴
+              </button>
+            </div>
+          </section>
+        ) : null}
+
         {active === "plan" ? (
           <div className="plan-stack">
             <section className="mypage-card plan-hero">
@@ -452,6 +564,37 @@ export function MypageSettings(props: Props) {
                       : `월 상담 ${numberFormat.format(currentPlan.includedTickets)}건까지 포함된 플랜입니다. 카드를 등록해야 다음 결제가 진행됩니다.`
                     : "지금은 Free 플랜입니다. 아래에서 유료 요금제를 신청한 뒤 결제 카드를 등록하면 다음 달 1일부터 시작됩니다."}
                 </p>
+                {currentPlan.cancellationEffectiveOn && !currentPlan.cancellationCompleted ? (
+                  <p className="plan-scheduled danger">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M12 8v5" />
+                      <path d="M12 16h.01" />
+                    </svg>
+                    <span>
+                      해지 신청이 접수되었습니다.{" "}
+                      <strong>{formatKoreanDate(currentPlan.cancellationEffectiveOn)}</strong>까지 이용할 수 있고,
+                      이후에는 청구되지 않습니다.
+                    </span>
+                    {props.canManage ? (
+                      <button type="button" onClick={() => void submitCancellation(true)} disabled={busy}>
+                        해지 신청 철회
+                      </button>
+                    ) : null}
+                  </p>
+                ) : null}
+                {currentPlan.cancellationCompleted ? (
+                  <p className="plan-scheduled danger">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M8.5 12l2.5 2.5L16 9.5" />
+                    </svg>
+                    <span>
+                      해지가 완료되어 더 이상 청구되지 않습니다. 다시 이용하시려면 담당 매니저에게
+                      문의해 주세요.
+                    </span>
+                  </p>
+                ) : null}
                 {currentPlan.scheduledPlanId ? (
                   <p className="plan-scheduled">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -670,6 +813,47 @@ export function MypageSettings(props: Props) {
                   canManage={props.canManage}
                   registrationReady={Boolean(props.plan.planId || props.plan.scheduledPlanId)}
                 />
+                {currentPlan.planId ? (
+                  <div>
+                    <div>
+                      <strong>구독 해지</strong>
+                      <small>
+                        {currentPlan.cancellationCompleted
+                          ? "해지가 완료되어 청구되지 않습니다."
+                          : currentPlan.cancellationEffectiveOn
+                            ? `${formatKoreanDate(currentPlan.cancellationEffectiveOn)}부터 청구가 중지됩니다.`
+                            : "신청하면 이번 이용기간까지 사용하고 다음 청구부터 중지됩니다."}
+                      </small>
+                    </div>
+                    {currentPlan.cancellationCompleted ? null : props.canManage ? (
+                      currentPlan.cancellationEffectiveOn ? (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => void submitCancellation(true)}
+                          disabled={busy}
+                        >
+                          해지 신청 철회
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="button-secondary"
+                          onClick={() => {
+                            setMessage("");
+                            setError("");
+                            setCancelOpen(true);
+                          }}
+                          disabled={busy}
+                        >
+                          해지 신청
+                        </button>
+                      )
+                    ) : (
+                      <span className="pill-disabled">소유자·관리자만 변경</span>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </section>
 
@@ -747,6 +931,103 @@ export function MypageSettings(props: Props) {
         ) : null}
 
         {active === "members" ? <div className="embedded-settings"><MemberManagement /></div> : null}
+
+        {cancelOpen ? (
+          <div className="plan-modal-backdrop" role="dialog" aria-modal="true" aria-label="구독 해지 확인">
+            <div className="plan-modal">
+              <header>
+                <p>구독 해지</p>
+                <h3>{currentPlan.label} 플랜 해지</h3>
+                <span>이번 이용기간까지 사용한 뒤 청구가 중지됩니다.</span>
+              </header>
+              <div className="plan-modal-body">
+                <div className="charge-next">
+                  <span>청구 중지일</span>
+                  <strong>
+                    {formatKoreanDate(
+                      currentPlan.nextBillingDate ?? nextMonthFirst(props.today),
+                    )}
+                  </strong>
+                </div>
+                <p className="plan-modal-note">
+                  해지 신청 후에도 청구 중지일 전까지는 그대로 이용할 수 있고, 그 전에 언제든
+                  철회할 수 있습니다. 예약해 둔 요금제 변경이 있다면 함께 취소됩니다.
+                  이미 발행된 청구서는 정상 결제되며, 환불·정산이 필요하면 담당 매니저에게
+                  문의해 주세요.
+                </p>
+              </div>
+              <div className="plan-modal-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={busy}
+                  onClick={() => setCancelOpen(false)}
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  className="button-danger"
+                  disabled={busy}
+                  onClick={() => void submitCancellation(false)}
+                >
+                  {busy ? "처리 중..." : "해지 신청"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {withdrawOpen ? (
+          <div className="plan-modal-backdrop" role="dialog" aria-modal="true" aria-label="회원 탈퇴 확인">
+            <div className="plan-modal">
+              <header>
+                <p>회원 탈퇴</p>
+                <h3>정말 탈퇴하시겠어요?</h3>
+                <span>{props.loginEmail}</span>
+              </header>
+              <div className="plan-modal-body">
+                <ul className="charge-lines">
+                  <li><span>워크스페이스</span><b>{props.withdrawal.closesWorkspace ? "함께 종료" : "유지"}</b></li>
+                  <li><span>개인정보</span><b>삭제</b></li>
+                  <li><span>결제·세금 기록</span><b>법정 기간 보관</b></li>
+                </ul>
+                <p className="plan-modal-note">
+                  탈퇴하면 되돌릴 수 없습니다.
+                  {props.withdrawal.closesWorkspace
+                    ? " 워크스페이스가 종료되고 채널 연동이 해제되며, 대시보드와 리포트에 접근할 수 없습니다."
+                    : " 워크스페이스에서 나가게 되며, 다시 이용하려면 멤버 초대를 받아야 합니다."}
+                </p>
+                <label className="danger-agree">
+                  <input
+                    type="checkbox"
+                    checked={withdrawAgreed}
+                    onChange={(event) => setWithdrawAgreed(event.target.checked)}
+                  />{" "}
+                  위 내용을 확인했으며 탈퇴에 동의합니다.
+                </label>
+              </div>
+              <div className="plan-modal-actions">
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={busy}
+                  onClick={() => setWithdrawOpen(false)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="button-danger"
+                  disabled={busy || !withdrawAgreed}
+                  onClick={() => void withdraw()}
+                >
+                  {busy ? "처리 중..." : "탈퇴하기"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </div>
   );
