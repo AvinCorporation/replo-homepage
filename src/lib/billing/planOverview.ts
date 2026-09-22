@@ -1,6 +1,11 @@
 import "server-only";
 import { calendarMonthRange } from "@/lib/dashboard/dates";
 import {
+  isCancellationComplete,
+  isCancellationPending,
+  readCancellationState,
+} from "@/lib/billing/cancellation";
+import {
   findSelectablePlan,
   planLabels,
   selectablePlans,
@@ -28,6 +33,10 @@ export type CurrentPlan = {
   currentPeriodEnd: string | null;
   scheduledPlanId: SelectablePlanId | null;
   status: string;
+  // 해지를 신청해 둔 경우, 청구가 멈추는 날짜. 그 전까지는 그대로 이용합니다.
+  cancellationEffectiveOn: string | null;
+  // 해지 효력일이 지나 더는 청구되지 않는 상태.
+  cancellationCompleted: boolean;
 };
 
 export type PlanOverview = {
@@ -46,6 +55,8 @@ const freePlan: CurrentPlan = {
   currentPeriodEnd: null,
   scheduledPlanId: null,
   status: "active",
+  cancellationEffectiveOn: null,
+  cancellationCompleted: false,
 };
 
 function daysInMonth(dateKey: string) {
@@ -101,7 +112,7 @@ export async function loadPlanOverview(workspaceId: string): Promise<PlanOvervie
     admin
       .from("subscriptions")
       .select(
-        "id, plan_name, monthly_fee, included_tickets, next_billing_date, status",
+        "id, plan_name, monthly_fee, included_tickets, next_billing_date, status, cancellation_requested_at, cancellation_effective_at",
       )
       .eq("workspace_id", workspaceId)
       .order("created_at", { ascending: false })
@@ -167,6 +178,7 @@ function toCurrentPlan(
   const scheduled = findSelectablePlan(
     pending?.to_plan_code === "Lite" ? "Starter" : pending?.to_plan_code,
   );
+  const cancellation = readCancellationState(row);
   return {
     planId: plan.id,
     label: planLabels[plan.id],
@@ -176,5 +188,10 @@ function toCurrentPlan(
     currentPeriodEnd: null,
     scheduledPlanId: scheduled?.id ?? null,
     status,
+    cancellationEffectiveOn:
+      isCancellationPending(cancellation) || isCancellationComplete(cancellation)
+        ? cancellation.effectiveOn
+        : null,
+    cancellationCompleted: isCancellationComplete(cancellation),
   };
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { MypageSettings, type MypageSection } from "@/components/mypage/MypageSettings";
+import { loadAccountWithdrawalState } from "@/lib/account/context";
 import { loginPathWithNext } from "@/lib/auth/redirect";
 import { loadPaymentMethods } from "@/lib/billing/paymentMethod";
 import { findSelectablePlan, selfServicePlanIds, type SelectablePlanId } from "@/lib/billing/plans";
@@ -78,7 +79,7 @@ export default async function MyPage({
 
   const supabase = await createClient();
 
-  const [brandResult, planOverview, paymentMethods] = await Promise.all([
+  const [brandResult, planOverview, paymentMethods, withdrawalState] = await Promise.all([
     supabase
       .from("brands")
       .select("name")
@@ -88,6 +89,7 @@ export default async function MyPage({
       .maybeSingle(),
     loadPlanOverview(access.workspace.id),
     loadPaymentMethods(access.workspace.id),
+    loadAccountWithdrawalState(access.user.id),
   ]);
 
   const customer = access.workspace;
@@ -121,6 +123,11 @@ export default async function MyPage({
       memberCount={planOverview.memberCount}
       paymentMethods={paymentMethods}
       cardNotice={parseCardNotice(searchParams?.card)}
+      withdrawal={{
+        closesWorkspace: withdrawalState.closesWorkspace,
+        workspaceCount: withdrawalState.memberships.length,
+        blockedReason: withdrawalState.blocked?.message ?? null,
+      }}
     />
   );
 }
